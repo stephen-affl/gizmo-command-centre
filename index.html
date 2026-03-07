@@ -447,6 +447,51 @@ const WatchlistRow = ({ lm }) => {
   );
 };
 
+// ── v8: SIDEBAR PRICE TILES (compact, for Freedom tab) ───────
+const SidebarPriceTiles = ({ lm, positions }) => {
+  if (!lm?.stocks) return null;
+  return (
+    <Panel title="⚡ LIVE PRICES" titleColor={C.cyan} right={<span style={{ ...S.mono, fontSize: 10, color: C.green }}>LIVE</span>}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+        {HELD_TICKERS.map(sym => {
+          const d = lm.stocks[sym];
+          if (!d) return null;
+          const pos = (positions || []).find(p => p.ticker === sym);
+          const badge = pos ? (pos.type === "CALL" ? "CC" : "CSP") : null;
+          const cc = chgColor(d.change);
+          return (
+            <div key={sym} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 7px", background: "rgba(0,170,255,.03)", borderRadius: 4, borderBottom: `1px solid ${C.b}` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ ...S.exo, fontSize: 10, fontWeight: 700, color: C.t2 }}>{sym}</span>
+                {badge && <span style={{ fontSize: 6, padding: "0px 3px", borderRadius: 2, background: badge === "CC" ? "rgba(224,64,251,.15)" : "rgba(0,229,255,.15)", color: badge === "CC" ? C.purple : C.cyan, fontWeight: 700 }}>{badge}</span>}
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ ...S.mono, fontSize: 11, fontWeight: 700, color: C.t }}>${d.price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                <div style={{ ...S.mono, fontSize: 8, color: cc }}>{chgArrow(d.change)} {fmtPct(d.change)}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {/* Watchlist */}
+      <div style={{ marginTop: 8, borderTop: `1px solid ${C.b2}`, paddingTop: 6 }}>
+        <div style={{ ...S.exo, fontSize: 8, fontWeight: 700, color: C.green, letterSpacing: 2, marginBottom: 4 }}>WATCHLIST</div>
+        {WATCH_TICKERS.map(sym => {
+          const d = lm.stocks[sym];
+          if (!d) return null;
+          return (
+            <div key={sym} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0", borderBottom: `1px solid ${C.b}` }}>
+              <span style={{ ...S.mono, fontSize: 10, color: C.t2 }}>{sym}</span>
+              <span style={{ ...S.mono, fontSize: 10, color: C.t }}>${d.price?.toFixed(2)}</span>
+              <span style={{ ...S.mono, fontSize: 10, color: chgColor(d.change) }}>{chgArrow(d.change)}{Math.abs(d.change || 0).toFixed(1)}%</span>
+            </div>
+          );
+        })}
+      </div>
+    </Panel>
+  );
+};
+
 // ── v8: FEAR & GREED GAUGE (large, live) ──────────────────────
 const FearGreedGaugeLive = ({ lm }) => {
   const fg = lm?.fearGreed;
@@ -975,8 +1020,7 @@ function GizmoCommandCentre() {
       <MarketPulseBar lm={liveMarket} pulse={justRefreshed} />
       <AlertBanner />
       <Top3Today />
-      <LivePriceTiles lm={liveMarket} pulse={justRefreshed} positions={state.income?.openPositions} />
-      <WatchlistRow lm={liveMarket} />
+      {/* Live Price Tiles moved to Freedom tab sidebar */}
       <div style={{ display: "grid", gridTemplateColumns: "240px 1fr 280px", gap: 12 }}>
         <AgentStatus />
         <Kanban />
@@ -1723,7 +1767,9 @@ function GizmoCommandCentre() {
               );
             })}
           </Panel>
-          <Panel title="$ PORTFOLIO VITALS">
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <SidebarPriceTiles lm={liveMarket} positions={Array.isArray(inc.openPositions) ? inc.openPositions : []} />
+            <Panel title="$ PORTFOLIO VITALS">
             {[
               ["NET WORTH", "$" + fmtK(fin.netWorth||0) + " CAD", C.cyan, (fin.netWorth||0) / 1500000 * 100, "$1.5M FI TARGET"],
               ["PORTFOLIO", "$" + fmtK(fin.portfolio||0) + " CAD", C.blue, null, null],
@@ -1747,6 +1793,7 @@ function GizmoCommandCentre() {
               <span style={{ ...S.badge, background: "rgba(224,64,251,.11)", color: C.purple }}>Phase {fin.phase} — Flywheel Active</span>
             </div>
           </Panel>
+          </div>{/* end stacked sidebar column */}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
           <Panel title="↻ FLYWHEEL STATUS">
