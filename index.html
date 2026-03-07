@@ -51,7 +51,10 @@ const DOMAIN_COLORS = {
   wealth: C.cyan, infrastructure: C.glow, operations: C.orange,
 };
 const PC = { urgent: C.red, high: C.orange, medium: C.gold, low: C.green };
-const SI = { queued: "⏳", in_progress: "▶", done: "✓" };
+const SI = { inbox: "💡", queued: "⏳", todo: "⏳", in_progress: "▶", waiting: "⏳", done: "✓" };
+const ENERGY_DOTS = { low: "🟢", medium: "🟡", high: "🔴" };
+const ENERGY_LABELS = { low: "Easy", medium: "Medium", high: "Deep Work" };
+const TASK_DOMAINS = { OPS: C.orange, WEALTH: C.cyan, RAISR: C.purple, AFFL: C.blue, HOME: C.t2, PERSONAL: C.green, INFRA: C.glow };
 // ── DEFAULT STATE ───────────────────────────────────────────
 const DEFAULT_STATE = {
   meta: { version: "4.0", soulVersion: "3.1" },
@@ -111,14 +114,29 @@ const DEFAULT_STATE = {
     nextReview: "2026-06-01", anchor: "Does this get me to $20K/mo faster?",
   },
   tasks: [
-    { id: 1, title: "Wealthsimple CSV export", status: "done", priority: "high", effort: "5 min", domain: "wealth" },
-    { id: 2, title: "Amex auto-pay setup", status: "queued", priority: "urgent", effort: "1 cycle", domain: "operations" },
-    { id: 3, title: "Monarch Money export + finance report", status: "queued", priority: "high", effort: "1-2 cycles", domain: "wealth" },
-    { id: 4, title: "Debug EOD script error", status: "queued", priority: "high", effort: "1-2 cycles", domain: "wealth" },
-    { id: 5, title: "Decision Journal setup", status: "queued", priority: "high", effort: "1 cycle", domain: "operations" },
-    { id: 6, title: "Command Centre finalize", status: "in_progress", priority: "high", effort: "1-2 cycles", domain: "infrastructure" },
-    { id: 7, title: "Security hardening", status: "queued", priority: "medium", effort: "1 cycle", domain: "infrastructure" },
-    { id: 8, title: "Pair OpenClaw node", status: "queued", priority: "medium", effort: "1 cycle", domain: "infrastructure" },
+    // Inbox
+    { id: "i1", title: "CRM tool for Raisr", type: "inbox", status: "inbox", priority: "medium", energy: "medium", domain: "RAISR", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
+    { id: "i2", title: "Second brain — deeper build", type: "inbox", status: "inbox", priority: "medium", energy: "high", domain: "INFRA", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
+    { id: "i3", title: "AI agent financial system Q2 roadmap", type: "inbox", status: "inbox", priority: "medium", energy: "high", domain: "WEALTH", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
+    { id: "i4", title: "Podcast / content idea around AI + finance", type: "inbox", status: "inbox", priority: "medium", energy: "medium", domain: "RAISR", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
+    // Stephen's tasks
+    { id: "s1", title: "Amex auto-pay setup", type: "stephen", status: "todo", priority: "urgent", energy: "low", domain: "OPS", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
+    { id: "s2", title: "Taxes (Wealthsimple)", type: "stephen", status: "todo", priority: "high", energy: "medium", domain: "PERSONAL", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
+    { id: "s3", title: "AFFL board meeting notes", type: "stephen", status: "todo", priority: "high", energy: "medium", domain: "AFFL", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
+    { id: "s4", title: "Organize bags", type: "stephen", status: "todo", priority: "medium", energy: "low", domain: "HOME", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
+    { id: "s5", title: "Clean Luke's room", type: "stephen", status: "todo", priority: "medium", energy: "low", domain: "HOME", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
+    { id: "s6", title: "Organize living room + cardboard", type: "stephen", status: "todo", priority: "medium", energy: "low", domain: "HOME", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
+    { id: "s7", title: "Wealthsimple CSV export → Gizmo", type: "stephen", status: "todo", priority: "high", energy: "low", domain: "WEALTH", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
+    // Waiting
+    { id: "w1", title: "Ben birthday party planning", type: "stephen", status: "waiting", priority: "medium", energy: "low", domain: "PERSONAL", waitingOn: "Craig, Aaron", dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
+    // Gizmo's tasks
+    { id: "g1", title: "Whisper voice transcription setup", type: "gizmo", status: "in_progress", priority: "high", energy: null, domain: "INFRA", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
+    { id: "g2", title: "AI agent deeper build — Q2 roadmap", type: "gizmo", status: "todo", priority: "high", energy: null, domain: "WEALTH", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
+    { id: "g3", title: "EOD script debug", type: "gizmo", status: "todo", priority: "high", energy: null, domain: "WEALTH", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
+    // Done today
+    { id: "d1", title: "Cron delivery IDs fixed", type: "gizmo", status: "done", priority: "high", energy: null, domain: "INFRA", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T08:00:00Z", completedAt: "2026-03-07T12:00:00Z" },
+    { id: "d2", title: "Live market data updater deployed", type: "gizmo", status: "done", priority: "high", energy: null, domain: "INFRA", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T09:00:00Z", completedAt: "2026-03-07T12:00:00Z" },
+    { id: "d3", title: "Dashboard v8 live on GitHub Pages", type: "gizmo", status: "done", priority: "high", energy: null, domain: "INFRA", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T10:00:00Z", completedAt: "2026-03-07T12:00:00Z" },
   ],
   alerts: [
     { level: "yellow", text: "ONDS at 115/140 (watch at 135)", ts: "2026-03-05T21:00:00" },
@@ -230,7 +248,7 @@ const fmtK = (n) => n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e3 ? (n / 1e3)
 const pctColor = (p) => p >= 100 ? C.green : p >= 80 ? C.gold : p >= 50 ? C.orange : C.red;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const statusColor = (s) => s === "red" ? C.red : s === "amber" ? C.orange : C.green;
-const domainLabel = (d) => ({ finance: "Financial Freedom", career: "Career", health: "Health", adhd: "ADHD & Energy", family: "Family", home: "Home", relationships: "Relationships", learning: "Learning", giving: "Giving", wealth: "Wealth", infrastructure: "Infra", operations: "Ops" }[d] || d);
+const domainLabel = (d) => ({ finance: "Financial Freedom", career: "Career", health: "Health", adhd: "ADHD & Energy", family: "Family", home: "Home", relationships: "Relationships", learning: "Learning", giving: "Giving", wealth: "Wealth", infrastructure: "Infra", operations: "Ops", OPS: "Ops", WEALTH: "Wealth", RAISR: "Raisr", AFFL: "AFFL", HOME: "Home", PERSONAL: "Personal", INFRA: "Infra" }[d] || d);
 // ── STYLES ─────────────────────────────────────────────────
 const css = `
 @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Exo+2:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
@@ -566,6 +584,12 @@ function GizmoCommandCentre() {
   const [logFilter, setLogFilter] = useState("ALL");
   const [newTaskText, setNewTaskText] = useState("");
   const [newInboxText, setNewInboxText] = useState("");
+  const [expandedTask, setExpandedTask] = useState(null);
+  const [waitingInput, setWaitingInput] = useState(null); // task id showing "waiting on" input
+  const [waitingText, setWaitingText] = useState("");
+  const [energyFilter, setEnergyFilter] = useState("all"); // all | low | medium | high
+  const [showDoneSection, setShowDoneSection] = useState(false);
+  const [editingTask, setEditingTask] = useState({}); // temp edit state for expanded card
   const [newRockText, setNewRockText] = useState("");
   const [newDirectiveText, setNewDirectiveText] = useState("");
   const [newQuickCmd, setNewQuickCmd] = useState("");
@@ -613,6 +637,56 @@ function GizmoCommandCentre() {
     if (d.income && !d.income.flywheel) {
       d.income = { ...d.income, flywheel: {} };
     }
+    // tasks: Gizmo sends {top3:[], inProgress:[], today:[], done:[]} → dashboard expects flat array with v9 schema
+    if (d.tasks && typeof d.tasks === "object" && !Array.isArray(d.tasks)) {
+      const statusMap = { TODO: "todo", IN_PROGRESS: "in_progress", BLOCKED: "in_progress", DONE: "done", WAITING: "waiting", INBOX: "inbox" };
+      const flatTasks = [];
+      const processList = (arr, defaultType) => {
+        if (!Array.isArray(arr)) return;
+        arr.forEach(t => {
+          if (!t || typeof t !== "object") return;
+          flatTasks.push({
+            id: t.id || "t" + Date.now() + Math.random(),
+            title: t.title || "",
+            type: (t.type || defaultType || "stephen").toLowerCase(),
+            status: statusMap[t.status] || t.status?.toLowerCase() || "todo",
+            priority: (t.priority || "medium").toLowerCase(),
+            energy: (t.energy || "medium").toLowerCase(),
+            domain: (t.domain || "OPS").toUpperCase(),
+            waitingOn: t.waitingOn || null,
+            dueDate: t.dueDate || null,
+            notes: t.notes || "",
+            createdAt: t.createdAt || new Date().toISOString(),
+            completedAt: t.completedAt || null,
+            owner: t.owner || ""
+          });
+        });
+      };
+      processList(d.tasks.top3, "stephen");
+      processList(d.tasks.inProgress, "stephen");
+      processList(d.tasks.today, "stephen");
+      processList(d.tasks.done, "stephen");
+      processList(d.tasks.inbox, "inbox");
+      processList(d.tasks.gizmo, "gizmo");
+      processList(d.tasks.waiting, "stephen");
+      d.tasks = flatTasks;
+    }
+    // Ensure all tasks in flat array have v9 fields
+    if (Array.isArray(d.tasks)) {
+      d.tasks = d.tasks.map(t => ({
+        ...t,
+        type: t.type || "stephen",
+        energy: t.energy || "medium",
+        domain: (t.domain || "OPS").toUpperCase() === "OPERATIONS" ? "OPS" : (t.domain || "OPS").toUpperCase(),
+        waitingOn: t.waitingOn || null,
+        dueDate: t.dueDate || null,
+        notes: t.notes || "",
+        createdAt: t.createdAt || new Date().toISOString(),
+        completedAt: t.completedAt || null,
+        // Map old statuses to new
+        status: t.status === "queued" ? "todo" : t.status,
+      }));
+    }
     return d;
   };
 
@@ -651,6 +725,55 @@ function GizmoCommandCentre() {
       setSyncStatus(lastFetchRef.current ? "stale" : "offline");
     }
     return false;
+  }, []);
+
+  // ── PUSH STATE BACK TO GIZMO ─────────────────────────────
+  // Reverse-normalizes dashboard state and POSTs to Gizmo's server
+  const pushStateToGizmo = useCallback(async (newState) => {
+    try {
+      const toSend = {};
+      // Reverse-normalize tasks: flat array → {top3, inProgress, today, done, inbox, gizmo, waiting}
+      if (Array.isArray(newState.tasks) && newState.tasks.length > 0) {
+        const revStatus = { todo: "TODO", in_progress: "IN_PROGRESS", done: "DONE", waiting: "WAITING", inbox: "INBOX" };
+        const revPriority = { urgent: "URGENT", high: "HIGH", medium: "MEDIUM", low: "LOW" };
+        const gTasks = { top3: [], inProgress: [], today: [], done: [], inbox: [], gizmo: [], waiting: [] };
+        newState.tasks.forEach(t => {
+          const gt = {
+            id: t.id, title: t.title, type: t.type,
+            status: revStatus[t.status] || "TODO",
+            priority: revPriority[t.priority] || "MEDIUM",
+            energy: (t.energy || "medium").toUpperCase(),
+            domain: (t.domain || "OPS").toUpperCase(),
+            waitingOn: t.waitingOn || null,
+            dueDate: t.dueDate || null,
+            notes: t.notes || "",
+            createdAt: t.createdAt, completedAt: t.completedAt,
+            owner: t.owner || ""
+          };
+          if (t.type === "inbox") gTasks.inbox.push(gt);
+          else if (t.type === "gizmo") gTasks.gizmo.push(gt);
+          else if (t.status === "waiting") gTasks.waiting.push(gt);
+          else if (t.status === "done") gTasks.done.push(gt);
+          else if (t.status === "in_progress") gTasks.inProgress.push(gt);
+          else gTasks.today.push(gt);
+        });
+        toSend.tasks = gTasks;
+      }
+      // Activity: send as-is (already compatible)
+      if (Array.isArray(newState.activity)) toSend.activity = newState.activity;
+      // Agents: send as-is
+      if (Array.isArray(newState.agents)) toSend.agents = newState.agents;
+      // gizmo_agent: send whole object (handoffs, directives, etc.)
+      if (newState.gizmo_agent) toSend.gizmo_agent = newState.gizmo_agent;
+
+      await fetch(STATE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(toSend)
+      });
+    } catch (e) {
+      console.log("[Gizmo] Push failed (server may be offline):", e.message);
+    }
   }, []);
 
   // Poll every 30s
@@ -701,9 +824,10 @@ function GizmoCommandCentre() {
     saveTimer.current = setTimeout(async () => {
       try {
         if (window.storage) await window.storage.set(STORAGE_KEY, JSON.stringify(newState));
+        pushStateToGizmo(newState); // Push changes back to Gizmo server
       } catch (e) { console.log("Storage save error:", e); }
     }, 500);
-  }, []);
+  }, [pushStateToGizmo]);
   useEffect(() => {
     const alerts = Array.isArray(state.alerts) ? state.alerts : [];
     const hasRed = alerts.some((a) => a.level === "red");
@@ -716,17 +840,71 @@ function GizmoCommandCentre() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
   const cycleTask = (id) => {
-    const next = { queued: "in_progress", in_progress: "done", done: "queued" };
+    const next = { todo: "in_progress", in_progress: "done", done: "todo", queued: "in_progress" };
     const task = safeTasks.find((t) => t.id === id);
-    const newTasks = safeTasks.map((t) => t.id === id ? { ...t, status: next[t.status] || "queued" } : t);
-    const newActivity = [{ ts: new Date().toISOString(), type: "task", text: `${task?.title} → ${next[task?.status]}` }, ...safeActivity].slice(0, 50);
+    if (!task || task.type === "gizmo") return; // Don't cycle gizmo tasks
+    const now = new Date().toISOString();
+    const newStatus = next[task.status] || "todo";
+    const newTasks = safeTasks.map((t) => t.id === id ? { ...t, status: newStatus, completedAt: newStatus === "done" ? now : null } : t);
+    const newActivity = [{ ts: now, type: "task", text: `${task?.title} → ${newStatus}` }, ...safeActivity].slice(0, 50);
     save({ ...state, tasks: newTasks, activity: newActivity });
   };
   const addTask = () => {
     if (!newTaskText.trim()) return;
-    const newTask = { id: Date.now(), title: newTaskText.trim(), status: "queued", priority: "medium", effort: "", domain: "operations" };
+    const newTask = { id: "s" + Date.now(), title: newTaskText.trim(), type: "stephen", status: "todo", priority: "medium", energy: "medium", domain: "OPS", waitingOn: null, dueDate: null, notes: "", createdAt: new Date().toISOString(), completedAt: null };
     save({ ...state, tasks: [...state.tasks, newTask], activity: [{ ts: new Date().toISOString(), type: "task", text: `Added: ${newTask.title}` }, ...safeActivity].slice(0, 50) });
     setNewTaskText("");
+  };
+  const addToInbox = () => {
+    if (!newInboxText.trim()) return;
+    const newTask = { id: "i" + Date.now(), title: newInboxText.trim(), type: "inbox", status: "inbox", priority: "medium", energy: "medium", domain: "OPS", waitingOn: null, dueDate: null, notes: "", createdAt: new Date().toISOString(), completedAt: null };
+    save({ ...state, tasks: [...state.tasks, newTask], activity: [{ ts: new Date().toISOString(), type: "task", text: `Inbox: ${newTask.title}` }, ...safeActivity].slice(0, 50) });
+    setNewInboxText("");
+  };
+  const triageTask = (id, action) => {
+    // action: "mine" | "gizmo" | "waiting" | "delete"
+    const task = safeTasks.find((t) => t.id === id);
+    if (!task) return;
+    if (action === "delete") {
+      save({ ...state, tasks: safeTasks.filter(t => t.id !== id), activity: [{ ts: new Date().toISOString(), type: "task", text: `Deleted: ${task.title}` }, ...safeActivity].slice(0, 50) });
+      return;
+    }
+    if (action === "mine") {
+      const newTasks = safeTasks.map(t => t.id === id ? { ...t, type: "stephen", status: "todo" } : t);
+      save({ ...state, tasks: newTasks, activity: [{ ts: new Date().toISOString(), type: "task", text: `Triaged → Mine: ${task.title}` }, ...safeActivity].slice(0, 50) });
+    } else if (action === "gizmo") {
+      const newTasks = safeTasks.map(t => t.id === id ? { ...t, type: "gizmo", status: "todo" } : t);
+      save({ ...state, tasks: newTasks, activity: [{ ts: new Date().toISOString(), type: "task", text: `Assigned to Gizmo: ${task.title}` }, ...safeActivity].slice(0, 50) });
+    } else if (action === "waiting") {
+      setWaitingInput(id);
+      setWaitingText("");
+    }
+  };
+  const confirmWaiting = (id) => {
+    const newTasks = safeTasks.map(t => t.id === id ? { ...t, type: "stephen", status: "waiting", waitingOn: waitingText.trim() || "Someone" } : t);
+    save({ ...state, tasks: newTasks, activity: [{ ts: new Date().toISOString(), type: "task", text: `Waiting: ${safeTasks.find(t=>t.id===id)?.title} → ${waitingText.trim()}` }, ...safeActivity].slice(0, 50) });
+    setWaitingInput(null);
+    setWaitingText("");
+  };
+  const updateTask = (id, updates) => {
+    const newTasks = safeTasks.map(t => t.id === id ? { ...t, ...updates } : t);
+    save({ ...state, tasks: newTasks });
+    setExpandedTask(null);
+    setEditingTask({});
+  };
+  const deleteTask = (id) => {
+    save({ ...state, tasks: safeTasks.filter(t => t.id !== id) });
+    setExpandedTask(null);
+  };
+  const moveTaskStatus = (id, newStatus) => {
+    const now = new Date().toISOString();
+    const task = safeTasks.find(t => t.id === id);
+    if (!task) return;
+    const newTasks = safeTasks.map(t => t.id === id ? { ...t, status: newStatus, completedAt: newStatus === "done" ? now : null } : t);
+    save({ ...state, tasks: newTasks, activity: [{ ts: now, type: "task", text: `${task.title} → ${newStatus}` }, ...safeActivity].slice(0, 50) });
+  };
+  const clearDoneTasks = () => {
+    save({ ...state, tasks: safeTasks.filter(t => t.status !== "done" || t.type === "gizmo") });
   };
   const getTop3 = () => {
     const items = [];
@@ -828,7 +1006,7 @@ function GizmoCommandCentre() {
       const item = (mx.handoffs || []).find(h => h.id === id);
       let newState = { ...state, gizmo_agent: { ...mx, handoffs } };
       if (action === "accepted" && item) {
-        const newTask = { id: Date.now(), title: item.text, status: "queued", priority: item.urgency === "urgent" ? "urgent" : "high", effort: "", domain: item.domain };
+        const newTask = { id: "s" + Date.now(), title: item.text, type: "stephen", status: "todo", priority: item.urgency === "urgent" ? "urgent" : "high", energy: "medium", domain: (item.domain || "OPS").toUpperCase(), waitingOn: null, dueDate: null, notes: "", createdAt: new Date().toISOString(), completedAt: null };
         newState = { ...newState, tasks: [...state.tasks, newTask], activity: [{ ts: new Date().toISOString(), type: "task", text: `Gizmo handoff accepted: ${item.text.slice(0,40)}...` }, ...safeActivity].slice(0, 50) };
       }
       save(newState);
@@ -886,36 +1064,35 @@ function GizmoCommandCentre() {
     );
   };
   const Kanban = () => {
+    const myTasks = safeTasks.filter(t => t.type === "stephen" || t.type === "inbox");
     const cols = [
-      { key: "queued", label: "TO DO", color: C.t3 },
+      { key: "todo", label: "TO DO", color: C.t3 },
       { key: "in_progress", label: "IN PROGRESS", color: C.cyan },
       { key: "done", label: "DONE", color: C.green },
     ];
     return (
-      <Panel title="✦ TASK BOARD" right={`${safeTasks.filter((t) => t.status !== "done").length} open`}>
+      <Panel title="✦ TASK BOARD" right={<span onClick={() => setTab("today")} style={{ cursor: "pointer", color: C.glow }}>FULL VIEW →</span>}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-          {cols.map((col) => (
+          {cols.map((col) => {
+            const colTasks = myTasks.filter((t) => col.key === "todo" ? (t.status === "todo" || t.status === "inbox") : t.status === col.key);
+            return (
             <div key={col.key}>
               <div style={{ ...S.exo, fontSize: 9, fontWeight: 700, color: col.color, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8, textAlign: "center", paddingBottom: 6, borderBottom: `1px solid ${C.b}` }}>
-                {col.label} <span style={{ ...S.mono, fontSize: 10 }}>({safeTasks.filter((t) => t.status === col.key).length})</span>
+                {col.label} <span style={{ ...S.mono, fontSize: 10 }}>({colTasks.length})</span>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 60 }}>
-                {safeTasks.filter((t) => t.status === col.key).sort((a, b) => { const o = { urgent: 0, high: 1, medium: 2, low: 3 }; return (o[a.priority] ?? 2) - (o[b.priority] ?? 2); }).map((t) => (
+                {colTasks.sort((a, b) => { const o = { urgent: 0, high: 1, medium: 2, low: 3 }; return (o[a.priority] ?? 2) - (o[b.priority] ?? 2); }).slice(0, 5).map((t) => (
                   <div key={t.id} onClick={() => cycleTask(t.id)} style={{ background: "rgba(0,170,255,.03)", border: `1px solid ${C.b}`, borderLeft: `3px solid ${PC[t.priority] || C.t3}`, padding: "7px 8px", borderRadius: 4, cursor: "pointer", transition: "all .15s", opacity: col.key === "done" ? 0.4 : 1 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: col.key === "done" ? C.t3 : C.t, textDecoration: col.key === "done" ? "line-through" : "none", lineHeight: 1.3 }}>{t.title}</div>
                     <div style={{ display: "flex", gap: 6, marginTop: 4, alignItems: "center" }}>
-                      <span style={{ ...S.exo, fontSize: 8, color: DOMAIN_COLORS[t.domain] || C.t3, letterSpacing: 1, fontWeight: 600, textTransform: "uppercase" }}>{t.domain}</span>
-                      {t.effort && <span style={{ fontSize: 9, color: C.t3 }}>{t.effort}</span>}
+                      <span style={{ ...S.exo, fontSize: 8, color: TASK_DOMAINS[t.domain] || DOMAIN_COLORS[t.domain] || C.t3, letterSpacing: 1, fontWeight: 600, textTransform: "uppercase" }}>{t.domain}</span>
+                      {t.energy && <span style={{ fontSize: 9 }}>{ENERGY_DOTS[t.energy] || ""}</span>}
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-          <input value={newTaskText} onChange={(e) => setNewTaskText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addTask()} placeholder="+ Quick add task..." style={{ flex: 1, background: "rgba(0,170,255,.04)", border: `1px solid ${C.b}`, borderRadius: 4, padding: "6px 10px", color: C.t, fontFamily: "'Rajdhani', sans-serif", fontSize: 13, outline: "none" }} />
-          <button onClick={addTask} style={S.hbtn}>ADD</button>
+          );})}
         </div>
       </Panel>
     );
@@ -1031,63 +1208,224 @@ function GizmoCommandCentre() {
       <DomainGrid />
     </div>
   );
-  const TodayView = () => {
-    const energy = state.adhd.energyToday;
-    const blocks = ["morning", "afternoon", "evening"];
-    const levels = [{ key: "low", label: "Low", color: C.red }, { key: "med", label: "Med", color: C.gold }, { key: "high", label: "High", color: C.green }];
-    const setEnergy = (block, level) => {
-      const newAdhd = { ...state.adhd, energyToday: { ...energy, [block]: level } };
-      save({ ...state, adhd: newAdhd });
-    };
-    const top3 = getTop3();
-    const theOne = top3[0];
-    const todayTasks = [...safeTasks].filter((t) => t.status !== "done").sort((a, b) => { const o = { urgent: 0, high: 1, medium: 2, low: 3 }; return (o[a.priority] ?? 2) - (o[b.priority] ?? 2); });
-    const quickWins = todayTasks.filter((t) => t.effort === "5 min" || t.effort === "1 cycle");
+  // ── TASK CARD COMPONENT ──────────────────────────────────
+  const TaskCard = ({ t, showActions = true }) => {
+    const isExpanded = expandedTask === t.id;
+    const isGizmo = t.type === "gizmo";
+    const priorityBorder = { urgent: `3px solid ${C.red}`, high: `3px solid ${C.orange}`, medium: `3px solid ${C.green}`, low: `3px solid ${C.t3}` };
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <Panel title="⚡ ENERGY CHECK-IN" titleColor={C.gold}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-            {blocks.map((b) => (
-              <div key={b} style={{ textAlign: "center" }}>
-                <div style={{ ...S.exo, fontSize: 10, color: C.t3, letterSpacing: 2, marginBottom: 8, textTransform: "uppercase" }}>{b}</div>
-                <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
-                  {levels.map((l) => (
-                    <button key={l.key} onClick={() => setEnergy(b, l.key)} style={{ padding: "6px 12px", background: energy[b] === l.key ? `${l.color}22` : "transparent", border: `1px solid ${energy[b] === l.key ? l.color : C.b}`, borderRadius: 4, color: energy[b] === l.key ? l.color : C.t3, fontFamily: "'Exo 2', sans-serif", fontSize: 10, fontWeight: 600, cursor: "pointer", letterSpacing: 1 }}>{l.label}</button>
+      <div style={{ background: isGizmo ? "rgba(0,170,255,.04)" : "rgba(0,170,255,.02)", border: `1px solid ${C.b}`, borderLeft: priorityBorder[t.priority] || `3px solid ${C.t3}`, borderRadius: 4, marginBottom: 4, transition: "all .15s" }}>
+        <div onClick={() => { if (!isGizmo && showActions) { setExpandedTask(isExpanded ? null : t.id); setEditingTask(isExpanded ? {} : { ...t }); } else if (showActions && !isGizmo) cycleTask(t.id); }} style={{ padding: "8px 10px", cursor: isGizmo ? "default" : "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+          {showActions && !isGizmo && <span onClick={(e) => { e.stopPropagation(); cycleTask(t.id); }} style={{ fontSize: 13, color: t.status === "in_progress" ? C.cyan : t.status === "done" ? C.green : C.t3, flexShrink: 0, cursor: "pointer" }}>{SI[t.status] || "⏳"}</span>}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: t.status === "done" ? C.t3 : C.t, textDecoration: t.status === "done" ? "line-through" : "none", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</div>
+            <div style={{ display: "flex", gap: 6, marginTop: 3, alignItems: "center", flexWrap: "wrap" }}>
+              <span style={{ ...S.exo, fontSize: 8, color: TASK_DOMAINS[t.domain] || C.t3, letterSpacing: 1, fontWeight: 600 }}>{t.domain}</span>
+              {t.energy && <span style={{ fontSize: 9 }}>{ENERGY_DOTS[t.energy] || ""}</span>}
+              {t.waitingOn && <span style={{ fontSize: 9, color: C.orange }}>⏳ {t.waitingOn}</span>}
+            </div>
+          </div>
+          <span style={{ ...S.badge, background: `${PC[t.priority]}15`, color: PC[t.priority], fontSize: 8, flexShrink: 0 }}>{t.priority}</span>
+        </div>
+        {isExpanded && !isGizmo && (
+          <div onClick={(e) => e.stopPropagation()} style={{ padding: "8px 10px", borderTop: `1px solid ${C.b}`, background: "rgba(0,0,0,.2)" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 8 }}>
+              <div>
+                <div style={{ ...S.exo, fontSize: 8, color: C.t3, letterSpacing: 1, marginBottom: 3 }}>PRIORITY</div>
+                <div style={{ display: "flex", gap: 3 }}>
+                  {["urgent","high","medium","low"].map(p => (
+                    <button key={p} onClick={() => setEditingTask(prev => ({...prev, priority: p}))} style={{ padding: "3px 6px", fontSize: 9, background: editingTask.priority === p ? `${PC[p]}22` : "transparent", border: `1px solid ${editingTask.priority === p ? PC[p] : C.b}`, borderRadius: 3, color: editingTask.priority === p ? PC[p] : C.t3, cursor: "pointer", fontFamily: "'Exo 2', sans-serif", fontWeight: 600, letterSpacing: 0.5, textTransform: "capitalize" }}>{p}</button>
                   ))}
                 </div>
               </div>
-            ))}
+              <div>
+                <div style={{ ...S.exo, fontSize: 8, color: C.t3, letterSpacing: 1, marginBottom: 3 }}>ENERGY</div>
+                <div style={{ display: "flex", gap: 3 }}>
+                  {["low","medium","high"].map(e => (
+                    <button key={e} onClick={() => setEditingTask(prev => ({...prev, energy: e}))} style={{ padding: "3px 6px", fontSize: 9, background: editingTask.energy === e ? "rgba(0,170,255,.1)" : "transparent", border: `1px solid ${editingTask.energy === e ? C.glow : C.b}`, borderRadius: 3, color: editingTask.energy === e ? C.glow : C.t3, cursor: "pointer", fontFamily: "'Exo 2', sans-serif" }}>{ENERGY_DOTS[e]} {ENERGY_LABELS[e]}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div style={{ marginBottom: 6 }}>
+              <div style={{ ...S.exo, fontSize: 8, color: C.t3, letterSpacing: 1, marginBottom: 3 }}>DOMAIN</div>
+              <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+                {Object.keys(TASK_DOMAINS).map(d => (
+                  <button key={d} onClick={() => setEditingTask(prev => ({...prev, domain: d}))} style={{ padding: "2px 6px", fontSize: 8, background: editingTask.domain === d ? `${TASK_DOMAINS[d]}22` : "transparent", border: `1px solid ${editingTask.domain === d ? TASK_DOMAINS[d] : C.b}`, borderRadius: 3, color: editingTask.domain === d ? TASK_DOMAINS[d] : C.t3, cursor: "pointer", fontFamily: "'Exo 2', sans-serif", fontWeight: 600, letterSpacing: 1 }}>{d}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{ marginBottom: 6 }}>
+              <div style={{ ...S.exo, fontSize: 8, color: C.t3, letterSpacing: 1, marginBottom: 3 }}>NOTES</div>
+              <textarea value={editingTask.notes || ""} onChange={(e) => setEditingTask(prev => ({...prev, notes: e.target.value}))} placeholder="Add notes..." style={{ width: "100%", background: "rgba(0,170,255,.04)", border: `1px solid ${C.b}`, borderRadius: 4, padding: "5px 8px", color: C.t, fontFamily: "'Rajdhani', sans-serif", fontSize: 12, outline: "none", resize: "vertical", minHeight: 40, boxSizing: "border-box" }} />
+            </div>
+            <div style={{ display: "flex", gap: 6, justifyContent: "space-between" }}>
+              <div style={{ display: "flex", gap: 4 }}>
+                {["todo","in_progress","waiting","done"].filter(s => s !== t.status).map(s => (
+                  <button key={s} onClick={() => { if (s === "waiting") { setWaitingInput(t.id); setWaitingText(t.waitingOn || ""); } else { updateTask(t.id, { ...editingTask, status: s, completedAt: s === "done" ? new Date().toISOString() : null }); }}} style={{ padding: "4px 8px", fontSize: 9, background: "rgba(0,170,255,.08)", border: `1px solid ${C.b}`, borderRadius: 3, color: C.glow, cursor: "pointer", fontFamily: "'Exo 2', sans-serif", fontWeight: 600 }}>→ {s === "todo" ? "TODO" : s === "in_progress" ? "DOING" : s === "waiting" ? "WAIT" : "DONE"}</button>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 4 }}>
+                <button onClick={() => updateTask(t.id, editingTask)} style={{ padding: "4px 10px", fontSize: 9, background: "rgba(0,230,118,.12)", border: `1px solid ${C.green}44`, borderRadius: 3, color: C.green, cursor: "pointer", fontFamily: "'Exo 2', sans-serif", fontWeight: 600 }}>SAVE</button>
+                <button onClick={() => deleteTask(t.id)} style={{ padding: "4px 8px", fontSize: 9, background: "rgba(255,23,68,.08)", border: `1px solid ${C.red}33`, borderRadius: 3, color: C.red, cursor: "pointer", fontFamily: "'Exo 2', sans-serif" }}>DEL</button>
+              </div>
+            </div>
+            {waitingInput === t.id && (
+              <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
+                <input value={waitingText} onChange={(e) => setWaitingText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && confirmWaiting(t.id)} placeholder="Waiting on who?" autoFocus style={{ flex: 1, background: "rgba(0,170,255,.04)", border: `1px solid ${C.orange}44`, borderRadius: 4, padding: "4px 8px", color: C.t, fontFamily: "'Rajdhani', sans-serif", fontSize: 12, outline: "none" }} />
+                <button onClick={() => confirmWaiting(t.id)} style={{ padding: "4px 8px", fontSize: 9, background: "rgba(255,145,0,.12)", border: `1px solid ${C.orange}44`, borderRadius: 3, color: C.orange, cursor: "pointer", fontFamily: "'Exo 2', sans-serif", fontWeight: 600 }}>SET</button>
+              </div>
+            )}
           </div>
-        </Panel>
-        {theOne && (
-          <Panel title="◈ THE ONE THING" titleColor={C.gold}>
-            <div style={{ ...S.scard, borderLeft: `4px solid ${theOne.color}`, textAlign: "center", padding: 20 }}>
-              <div style={{ ...S.exo, fontSize: 9, color: DOMAIN_COLORS[theOne.domain] || C.t3, letterSpacing: 2, textTransform: "uppercase", marginBottom: 6 }}>{domainLabel(theOne.domain)}</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: C.t }}>{theOne.text}</div>
-            </div>
-          </Panel>
         )}
-        <Panel title="☰ TODAY'S TASKS" right={`${todayTasks.length} remaining`}>
-          {todayTasks.map((t) => (
-            <div key={t.id} onClick={() => cycleTask(t.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: `1px solid ${C.b}`, cursor: "pointer" }}>
-              <span style={{ color: t.status === "in_progress" ? C.cyan : C.t3, fontSize: 14, flexShrink: 0 }}>{SI[t.status]}</span>
-              <span style={{ fontSize: 14, fontWeight: 600, color: C.t, flex: 1 }}>{t.title}</span>
-              <span style={{ ...S.exo, fontSize: 9, color: DOMAIN_COLORS[t.domain] || C.t3, letterSpacing: 1 }}>{t.domain}</span>
-              <span style={{ ...S.badge, background: `${PC[t.priority]}22`, color: PC[t.priority], fontSize: 9 }}>{t.priority}</span>
-            </div>
-          ))}
-        </Panel>
-        {quickWins.length > 0 && (
-          <Panel title="⚡ QUICK WINS" titleColor={C.green} right="Under 5 min">
-            {quickWins.map((t) => (
-              <div key={t.id} onClick={() => cycleTask(t.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${C.b}`, cursor: "pointer" }}>
-                <span style={{ fontSize: 12, color: C.green }}>⚡</span>
-                <span style={{ fontSize: 13, color: C.t }}>{t.title}</span>
-                <span style={{ marginLeft: "auto", ...S.mono, fontSize: 10, color: C.t3 }}>{t.effort}</span>
+      </div>
+    );
+  };
+
+  // ── TODAY VIEW (v9 Task System) ─────────────────────────
+  const TodayView = () => {
+    const inboxTasks = safeTasks.filter(t => t.type === "inbox" && t.status === "inbox");
+    const myTasks = safeTasks.filter(t => t.type === "stephen" && t.status !== "done" && t.status !== "waiting" && t.status !== "inbox");
+    const myTodo = myTasks.filter(t => t.status === "todo");
+    const myInProgress = myTasks.filter(t => t.status === "in_progress");
+    const myWaiting = safeTasks.filter(t => t.type === "stephen" && t.status === "waiting");
+    const gizmoTasks = safeTasks.filter(t => t.type === "gizmo");
+    const gizmoActive = gizmoTasks.filter(t => t.status !== "done");
+    const gizmoDone = gizmoTasks.filter(t => t.status === "done");
+    const allDone = safeTasks.filter(t => t.status === "done" && t.type !== "gizmo");
+    const sortPri = (a, b) => { const o = { urgent: 0, high: 1, medium: 2, low: 3 }; return (o[a.priority] ?? 2) - (o[b.priority] ?? 2); };
+
+    // Energy filtering
+    const filterByEnergy = (tasks) => energyFilter === "all" ? tasks : tasks.filter(t => t.energy === energyFilter);
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {/* ─── SECTION 1: QUICK CAPTURE ─── */}
+        <div style={{ ...S.pnl, padding: "10px 16px" }}>
+          <div style={S.scanline} />
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span style={{ fontSize: 16, color: C.gold }}>+</span>
+            <input value={newInboxText} onChange={(e) => setNewInboxText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addToInbox()} placeholder="Add to inbox... type and press Enter" style={{ flex: 1, background: "transparent", border: "none", padding: "8px 0", color: C.t, fontFamily: "'Rajdhani', sans-serif", fontSize: 15, fontWeight: 600, outline: "none", letterSpacing: 0.5 }} />
+            <button onClick={addToInbox} style={{ ...S.hbtn, padding: "6px 14px" }}>ADD</button>
+          </div>
+        </div>
+
+        {/* ─── SECTION 2: INBOX ─── */}
+        {inboxTasks.length > 0 && (
+          <Panel title={`💡 INBOX`} titleColor={C.gold} right={<span style={{ ...S.badge, background: "rgba(255,234,0,.15)", color: C.gold, fontSize: 10, animation: inboxTasks.length > 0 ? "pulse 2s infinite" : "none" }}>{inboxTasks.length}</span>}>
+            {inboxTasks.map(t => (
+              <div key={t.id} style={{ padding: "8px 0", borderBottom: `1px solid ${C.b}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: C.t, flex: 1 }}>{t.title}</span>
+                  <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                    <button onClick={() => triageTask(t.id, "mine")} title="Assign to me" style={{ padding: "3px 8px", fontSize: 9, background: "rgba(0,170,255,.08)", border: `1px solid ${C.b}`, borderRadius: 3, color: C.glow, cursor: "pointer", fontFamily: "'Exo 2', sans-serif", fontWeight: 600 }}>→ Mine</button>
+                    <button onClick={() => triageTask(t.id, "gizmo")} title="Assign to Gizmo" style={{ padding: "3px 8px", fontSize: 9, background: "rgba(0,170,255,.08)", border: `1px solid ${C.b}`, borderRadius: 3, color: C.cyan, cursor: "pointer", fontFamily: "'Exo 2', sans-serif", fontWeight: 600 }}>→ Gizmo</button>
+                    <button onClick={() => triageTask(t.id, "waiting")} title="Waiting on someone" style={{ padding: "3px 8px", fontSize: 9, background: "rgba(255,145,0,.08)", border: `1px solid ${C.b}`, borderRadius: 3, color: C.orange, cursor: "pointer", fontFamily: "'Exo 2', sans-serif", fontWeight: 600 }}>⏳</button>
+                    <button onClick={() => triageTask(t.id, "delete")} title="Delete" style={{ padding: "3px 8px", fontSize: 9, background: "rgba(255,23,68,.08)", border: `1px solid ${C.b}`, borderRadius: 3, color: C.red, cursor: "pointer", fontFamily: "'Exo 2', sans-serif" }}>✕</button>
+                  </div>
+                </div>
+                {waitingInput === t.id && (
+                  <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
+                    <input value={waitingText} onChange={(e) => setWaitingText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && confirmWaiting(t.id)} placeholder="Waiting on who?" autoFocus style={{ flex: 1, background: "rgba(0,170,255,.04)", border: `1px solid ${C.orange}44`, borderRadius: 4, padding: "5px 8px", color: C.t, fontFamily: "'Rajdhani', sans-serif", fontSize: 12, outline: "none" }} />
+                    <button onClick={() => confirmWaiting(t.id)} style={{ padding: "4px 10px", fontSize: 9, background: "rgba(255,145,0,.12)", border: `1px solid ${C.orange}44`, borderRadius: 3, color: C.orange, cursor: "pointer", fontFamily: "'Exo 2', sans-serif", fontWeight: 600 }}>SET</button>
+                  </div>
+                )}
               </div>
             ))}
           </Panel>
         )}
+
+        {/* ─── ENERGY FILTER ROW ─── */}
+        <div style={{ display: "flex", gap: 4, alignItems: "center", padding: "0 4px" }}>
+          <span style={{ ...S.exo, fontSize: 9, color: C.t3, letterSpacing: 2, marginRight: 6 }}>SHOW:</span>
+          {[{ key: "all", label: "ALL", color: C.glow }, { key: "low", label: "🟢 EASY", color: C.green }, { key: "medium", label: "🟡 MEDIUM", color: C.gold }, { key: "high", label: "🔴 DEEP WORK", color: C.red }].map(f => (
+            <button key={f.key} onClick={() => setEnergyFilter(f.key)} style={{ padding: "4px 10px", fontSize: 9, background: energyFilter === f.key ? `${f.color}18` : "transparent", border: `1px solid ${energyFilter === f.key ? f.color : C.b}`, borderRadius: 4, color: energyFilter === f.key ? f.color : C.t3, cursor: "pointer", fontFamily: "'Exo 2', sans-serif", fontWeight: 600, letterSpacing: 1, transition: "all .15s" }}>{f.label}</button>
+          ))}
+        </div>
+
+        {/* ─── SECTION 3: MY TASKS KANBAN ─── */}
+        <Panel title="📋 MY TASKS" right={`${myTasks.length} active`}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            {/* TODO column */}
+            <div>
+              <div style={{ ...S.exo, fontSize: 9, fontWeight: 700, color: C.t3, letterSpacing: 2, marginBottom: 8, textAlign: "center", paddingBottom: 6, borderBottom: `1px solid ${C.b}` }}>
+                TODO <span style={{ ...S.mono, fontSize: 10 }}>({filterByEnergy(myTodo).length})</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, minHeight: 60 }}>
+                {filterByEnergy(myTodo).sort(sortPri).map(t => <TaskCard key={t.id} t={t} />)}
+              </div>
+            </div>
+            {/* IN PROGRESS column */}
+            <div>
+              <div style={{ ...S.exo, fontSize: 9, fontWeight: 700, color: C.cyan, letterSpacing: 2, marginBottom: 8, textAlign: "center", paddingBottom: 6, borderBottom: `1px solid ${C.b}` }}>
+                IN PROGRESS <span style={{ ...S.mono, fontSize: 10 }}>({filterByEnergy(myInProgress).length})</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, minHeight: 60 }}>
+                {filterByEnergy(myInProgress).sort(sortPri).map(t => <TaskCard key={t.id} t={t} />)}
+              </div>
+            </div>
+            {/* WAITING column */}
+            <div>
+              <div style={{ ...S.exo, fontSize: 9, fontWeight: 700, color: C.orange, letterSpacing: 2, marginBottom: 8, textAlign: "center", paddingBottom: 6, borderBottom: `1px solid ${C.b}` }}>
+                WAITING <span style={{ ...S.mono, fontSize: 10 }}>({myWaiting.length})</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, minHeight: 60 }}>
+                {myWaiting.sort(sortPri).map(t => <TaskCard key={t.id} t={t} />)}
+              </div>
+            </div>
+          </div>
+          {/* Done section - collapsible */}
+          {allDone.length > 0 && (
+            <div style={{ marginTop: 10, borderTop: `1px solid ${C.b}`, paddingTop: 8 }}>
+              <div onClick={() => setShowDoneSection(!showDoneSection)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", marginBottom: showDoneSection ? 6 : 0 }}>
+                <span style={{ ...S.exo, fontSize: 9, color: C.green, letterSpacing: 2 }}>✓ DONE ({allDone.length})</span>
+                <span style={{ fontSize: 9, color: C.t3 }}>{showDoneSection ? "▼" : "▶"}</span>
+                {showDoneSection && <button onClick={(e) => { e.stopPropagation(); clearDoneTasks(); }} style={{ marginLeft: "auto", padding: "2px 8px", fontSize: 8, background: "rgba(255,23,68,.08)", border: `1px solid ${C.red}33`, borderRadius: 3, color: C.red, cursor: "pointer", fontFamily: "'Exo 2', sans-serif" }}>CLEAR DONE</button>}
+              </div>
+              {showDoneSection && allDone.slice(0, 5).map(t => <TaskCard key={t.id} t={t} />)}
+            </div>
+          )}
+          {/* Quick add task */}
+          <div style={{ display: "flex", gap: 6, marginTop: 10, paddingTop: 8, borderTop: `1px solid ${C.b}` }}>
+            <input value={newTaskText} onChange={(e) => setNewTaskText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addTask()} placeholder="+ Quick add to My Tasks..." style={{ flex: 1, background: "rgba(0,170,255,.04)", border: `1px solid ${C.b}`, borderRadius: 4, padding: "6px 10px", color: C.t, fontFamily: "'Rajdhani', sans-serif", fontSize: 13, outline: "none" }} />
+            <button onClick={addTask} style={S.hbtn}>ADD</button>
+          </div>
+        </Panel>
+
+        {/* ─── SECTION 4: GIZMO'S TASKS ─── */}
+        <Panel title="⚙️ GIZMO WORKING ON" titleColor={C.cyan} right={`${gizmoActive.length} active`}>
+          <div style={{ background: "rgba(0,229,255,.03)", borderRadius: 4, padding: 2 }}>
+            {gizmoActive.length === 0 && gizmoDone.length === 0 && <div style={{ fontSize: 12, color: C.t3, textAlign: "center", padding: 16 }}>No Gizmo tasks</div>}
+            {gizmoActive.filter(t => t.status === "in_progress").map(t => (
+              <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderBottom: `1px solid ${C.b}` }}>
+                <span style={{ fontSize: 11, color: C.cyan }}>🔄</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: C.t }}>{t.title}</span>
+                <span style={{ marginLeft: "auto", ...S.exo, fontSize: 8, color: TASK_DOMAINS[t.domain] || C.t3, letterSpacing: 1 }}>{t.domain}</span>
+              </div>
+            ))}
+            {gizmoActive.filter(t => t.status === "todo").map(t => (
+              <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderBottom: `1px solid ${C.b}` }}>
+                <span style={{ fontSize: 11, color: C.t3 }}>📋</span>
+                <span style={{ fontSize: 13, color: C.t2 }}>{t.title}</span>
+                <span style={{ marginLeft: "auto", ...S.exo, fontSize: 8, color: TASK_DOMAINS[t.domain] || C.t3, letterSpacing: 1 }}>{t.domain}</span>
+              </div>
+            ))}
+            {gizmoDone.length > 0 && (
+              <div style={{ borderTop: `1px solid ${C.b}`, marginTop: 4, paddingTop: 6 }}>
+                <div style={{ ...S.exo, fontSize: 8, color: C.green, letterSpacing: 2, padding: "0 10px", marginBottom: 4 }}>✅ DONE TODAY</div>
+                {gizmoDone.slice(0, 3).map(t => (
+                  <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 10px", opacity: 0.6 }}>
+                    <span style={{ fontSize: 11, color: C.green }}>✓</span>
+                    <span style={{ fontSize: 12, color: C.t3, textDecoration: "line-through" }}>{t.title}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div style={{ textAlign: "center", marginTop: 6, padding: 4 }}>
+            <span style={{ ...S.exo, fontSize: 8, color: C.t3, letterSpacing: 1 }}>Managed by Gizmo · Read-only</span>
+          </div>
+        </Panel>
       </div>
     );
   };
@@ -1264,7 +1602,7 @@ function GizmoCommandCentre() {
               <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
                 {Object.keys(DOMAIN_COLORS).slice(0, 9).map((d) => (
                   <button key={d} onClick={() => {
-                    const newTask = { id: Date.now(), title: item.text, status: "queued", priority: "medium", effort: "", domain: d };
+                    const newTask = { id: "s" + Date.now(), title: item.text, type: "stephen", status: "todo", priority: "medium", energy: "medium", domain: d.toUpperCase(), waitingOn: null, dueDate: null, notes: "", createdAt: new Date().toISOString(), completedAt: null };
                     save({ ...state, inbox: safeInbox.filter((i) => i.id !== item.id), tasks: [...state.tasks, newTask], activity: [{ ts: new Date().toISOString(), type: "task", text: `Triaged: ${item.text} → ${d}` }, ...safeActivity].slice(0, 50) });
                   }} style={{ padding: "2px 7px", background: `${DOMAIN_COLORS[d]}11`, border: `1px solid ${DOMAIN_COLORS[d]}33`, borderRadius: 3, color: DOMAIN_COLORS[d], fontFamily: "'Exo 2', sans-serif", fontSize: 8, fontWeight: 600, letterSpacing: 1, cursor: "pointer", textTransform: "uppercase" }}>{d}</button>
                 ))}
@@ -1380,7 +1718,7 @@ function GizmoCommandCentre() {
       const item = mx.handoffs.find(h => h.id === id);
       let newState = { ...state, gizmo_agent: { ...mx, handoffs: handoffs } };
       if (action === "accepted" && item) {
-        const newTask = { id: Date.now(), title: item.text, status: "queued", priority: item.urgency === "urgent" ? "urgent" : "high", effort: "", domain: item.domain };
+        const newTask = { id: "s" + Date.now(), title: item.text, type: "stephen", status: "todo", priority: item.urgency === "urgent" ? "urgent" : "high", energy: "medium", domain: (item.domain || "OPS").toUpperCase(), waitingOn: null, dueDate: null, notes: "", createdAt: new Date().toISOString(), completedAt: null };
         newState = { ...newState, tasks: [...state.tasks, newTask], activity: [{ ts: new Date().toISOString(), type: "task", text: `Gizmo handoff accepted: ${item.text.slice(0,40)}...` }, ...safeActivity].slice(0, 50) };
       }
       save(newState);
@@ -1955,7 +2293,7 @@ function GizmoCommandCentre() {
         {renderView()}
         <DataFreshnessBar dataAge={dataAge} syncStatus={syncStatus} lm={liveMarket} />
         <div style={{ textAlign: "center", padding: 10, borderTop: `1px solid ${C.b2}`, position: "relative", zIndex: 1 }}>
-          <span style={{ ...S.exo, fontSize: 9, color: C.t3, letterSpacing: 2 }}>GIZMO v8.0 ◆ COMMAND CENTRE ◆ LIVE DATA</span>
+          <span style={{ ...S.exo, fontSize: 9, color: C.t3, letterSpacing: 2 }}>GIZMO v9.0 ◆ COMMAND CENTRE ◆ TASK SYSTEM</span>
         </div>
       </div>
       <CommandPalette />
