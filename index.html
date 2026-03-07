@@ -1,1 +1,1739 @@
-test placeholder
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gizmo Command Centre</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>body{margin:0;padding:0;background:#020a14;overflow-x:hidden}</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">const { useState, useEffect, useCallback, useRef } = React;
+// ═══════════════════════════════════════════════════════════════
+// GIZMO COMMAND CENTRE v4 — Phase 1
+// Design basis: gizmo-artifact-49be0151.html (JARVIS HUD)
+// Layout: Gizmo 3-column operations + domain grid
+// ═══════════════════════════════════════════════════════════════
+const STORAGE_KEY = "gizmo-command-centre-v4";
+// ── COLOR SYSTEM ────────────────────────────────────────────
+const C = {
+  bg: "#020a14", s1: "#051525", s2: "#0a1a2a",
+  b: "rgba(0,170,255,0.08)", b2: "rgba(0,170,255,0.16)",
+  glow: "#00aaff", gold: "#ffea00", green: "#00e676",
+  red: "#ff1744", orange: "#ff9100", cyan: "#00e5ff",
+  purple: "#e040fb", blue: "#448aff",
+  t: "#7fdbff", t2: "#5a9ab5", t3: "#3a6a85",
+};
+const DOMAIN_COLORS = {
+  finance: C.green, career: C.blue, health: "#f43f5e",
+  adhd: C.gold, family: C.purple, home: C.t2,
+  relationships: C.cyan, learning: C.gold, giving: C.green,
+  wealth: C.cyan, infrastructure: C.glow, operations: C.orange,
+};
+const PC = { urgent: C.red, high: C.orange, medium: C.gold, low: C.green };
+const SI = { queued: "⏳", in_progress: "▶", done: "✓" };
+// ── DEFAULT STATE ───────────────────────────────────────────
+const DEFAULT_STATE = {
+  meta: { version: "4.0", soulVersion: "3.1" },
+  income: {
+    target: 20000, currency: "CAD", fxRate: 1.40,
+    rolling30d: { premiumsUSD: 11261, dividendsUSD: 1870, interestUSD: -118, totalUSD: 13131, totalCAD: 18383, pctOfTarget: 92 },
+    rolling14d: { premiumsUSD: 8580, dividendsUSD: 1870, totalUSD: 10450, projectedMonthlyCAD: 31349, pctOfTarget: 157 },
+    monthly: [
+      { month: "2025-12", label: "Dec", premiumsUSD: -134, dividendsUSD: 641, totalUSD: 507, totalCAD: 710, pct: 4 },
+      { month: "2026-01", label: "Jan", premiumsUSD: 634, dividendsUSD: 1369, totalUSD: 1881, totalCAD: 2634, pct: 13 },
+      { month: "2026-02", label: "Feb", premiumsUSD: 16240, dividendsUSD: 1870, totalUSD: 18110, totalCAD: 25354, pct: 127 },
+      { month: "2026-03", label: "Mar", premiumsUSD: -4979, dividendsUSD: 0, totalUSD: -5097, totalCAD: -7136, pct: 0, partial: true, days: 5, note: "Rolls in progress" },
+    ],
+    openPositions: [
+      { ticker: "MU", strike: 365, type: "PUT", expiry: "2026-03-20", dte: 15, qty: 1, premium: 1450 },
+      { ticker: "TSLA", strike: 430, type: "CALL", expiry: "2026-03-27", dte: 22, qty: 1, premium: 882 },
+      { ticker: "NBIS", strike: 85, type: "PUT", expiry: "2026-03-27", dte: 22, qty: 2, premium: 854 },
+      { ticker: "MSTR", strike: 120, type: "PUT", expiry: "2026-03-20", dte: 15, qty: 3, premium: 828 },
+      { ticker: "COIN", strike: 177.5, type: "PUT", expiry: "2026-03-20", dte: 15, qty: 3, premium: 726 },
+      { ticker: "MU", strike: 440, type: "CALL", expiry: "2026-03-13", dte: 8, qty: 1, premium: 670 },
+      { ticker: "ONDS", strike: 8, type: "PUT", expiry: "2026-03-13", dte: 8, qty: 25, premium: 625 },
+      { ticker: "RKLB", strike: 84, type: "CALL", expiry: "2026-03-13", dte: 8, qty: 4, premium: 472 },
+      { ticker: "IREN", strike: 32, type: "PUT", expiry: "2026-03-20", dte: 15, qty: 5, premium: 465 },
+      { ticker: "IBRX", strike: 12.5, type: "CALL", expiry: "2026-03-13", dte: 8, qty: 11, premium: 451 },
+      { ticker: "CRCL", strike: 92, type: "PUT", expiry: "2026-03-20", dte: 15, qty: 2, premium: 408 },
+      { ticker: "NBIS", strike: 115, type: "CALL", expiry: "2026-03-20", dte: 15, qty: 1, premium: 185 },
+    ],
+    topEarners: [
+      { ticker: "MU", net: 2901 }, { ticker: "CIFR", net: 2683 }, { ticker: "RKLB", net: 1950 },
+      { ticker: "ONDS", net: 1675 }, { ticker: "TSLA", net: 1511 }, { ticker: "IBRX", net: 956 },
+      { ticker: "IREN", net: 467 }, { ticker: "ASTS", net: -2358 },
+    ],
+    flywheel: { btciShares: 1587.5, qqqiShares: 1012.1, totalDeployedUSD: 115937, monthlyDivGrowth: 56, projectedTargetDate: "2027-06" },
+    updatedAt: "2026-03-05T21:45:00-07:00", dataSource: "Wealthsimple CSV export 2026-03-05",
+  },
+  finance: { netWorth: 1134644, portfolio: 618000, onds: 115, ondsMax: 140, btc: 1.3, btcTarget: 6.15, margin: -25000, marginMax: -40000, phase: 1, monthlyBurn: 16450, monthlySurplus: 2900, updated: "2026-03-05" },
+  fearGreed: {
+    crypto: { value: 45, label: "Fear", updated: "2026-03-06" },
+    vix: { value: 23.5, label: "Elevated", updated: "2026-03-06" },
+  },
+  trades: {
+    month: "2026-03", netUSD: 3361, premiumsCollected: 2269, closedWinners: 1092, dayTrades: 261.80, closedLosers: -262, flywheelReinvested: 1131.55,
+    recent: [
+      { date: "2026-03-06", ticker: "MU", action: "CC BTC", strike: 422.50, pl: 241, note: "52.5% capture" },
+      { date: "2026-03-06", ticker: "IBRX", action: "CC BTC", strike: 12.50, pl: 363, note: "80.5% capture" },
+      { date: "2026-03-06", ticker: "MSTZ", action: "DAY TRADE", strike: null, pl: 261.80, note: "Quick flip" },
+      { date: "2026-03-06", ticker: "HOOD", action: "CSP STO", strike: 66, pl: null, premium: 318, note: "New position" },
+    ],
+  },
+  policy: {
+    phase: 1, phaseName: "The Machine", targetIncome: 20000,
+    allocation: {
+      wheel: { target: 45, actual: 45 }, yieldETFs: { target: 22, actual: 17 },
+      coreIndex: { target: 12, actual: 7 }, btc: { target: 8, actual: 10 },
+      oly: { target: 18, actual: 21 }, cash: { target: 5, actual: 0 },
+    },
+    nextReview: "2026-06-01", anchor: "Does this get me to $20K/mo faster?",
+  },
+  tasks: [
+    { id: 1, title: "Wealthsimple CSV export", status: "done", priority: "high", effort: "5 min", domain: "wealth" },
+    { id: 2, title: "Amex auto-pay setup", status: "queued", priority: "urgent", effort: "1 cycle", domain: "operations" },
+    { id: 3, title: "Monarch Money export + finance report", status: "queued", priority: "high", effort: "1-2 cycles", domain: "wealth" },
+    { id: 4, title: "Debug EOD script error", status: "queued", priority: "high", effort: "1-2 cycles", domain: "wealth" },
+    { id: 5, title: "Decision Journal setup", status: "queued", priority: "high", effort: "1 cycle", domain: "operations" },
+    { id: 6, title: "Command Centre finalize", status: "in_progress", priority: "high", effort: "1-2 cycles", domain: "infrastructure" },
+    { id: 7, title: "Security hardening", status: "queued", priority: "medium", effort: "1 cycle", domain: "infrastructure" },
+    { id: 8, title: "Pair OpenClaw node", status: "queued", priority: "medium", effort: "1 cycle", domain: "infrastructure" },
+  ],
+  alerts: [
+    { level: "yellow", text: "ONDS at 115/140 (watch at 135)", ts: "2026-03-05T21:00:00" },
+    { level: "yellow", text: "30-day income at 92% of $20K target", ts: "2026-03-05T21:00:00" },
+    { level: "red", text: "All 11 cron jobs failing — Anthropic credits depleted", ts: "2026-03-05T20:00:00" },
+    { level: "yellow", text: "Mar showing negative — rolls in progress", ts: "2026-03-05T21:30:00" },
+  ],
+  cronHealth: {
+    marketOpen: { status: "error", errors: 3, note: "Message delivery failed" },
+    midday: { status: "error", errors: 4, note: "Message delivery failed" },
+    eod: { status: "error", errors: 3, note: "Delivery failed" },
+    apex: { status: "error", errors: 4, note: "Anthropic credits depleted" },
+    gizmo_agent: { status: "error", errors: 1, note: "Anthropic credits depleted" },
+  },
+  agents: [
+    { name: "Gizmo", status: "online", model: "claude-sonnet", trust: "L3", cron: "*/5 * * * *", channel: "telegram" },
+    { name: "Gizmo", status: "error", model: "claude-sonnet", trust: "L2", cron: "0 9,12,17 * * *", channel: "telegram" },
+    { name: "Apex", status: "error", model: "claude-sonnet", trust: "L2", cron: "0 9,16 * * 1-5", channel: "telegram" },
+  ],
+  activity: [
+    { ts: "2026-03-05T21:45:00", type: "task", text: "Wealthsimple CSV export → done" },
+    { ts: "2026-03-05T21:30:00", type: "alert", text: "Mar income negative — rolls in progress" },
+    { ts: "2026-03-05T20:00:00", type: "system", text: "All cron jobs failing — credits depleted" },
+    { ts: "2026-03-05T19:30:00", type: "task", text: "Command Centre finalize → in_progress" },
+    { ts: "2026-03-05T18:00:00", type: "system", text: "State export completed" },
+    { ts: "2026-03-05T17:00:00", type: "alert", text: "ONDS approaching watch level (115/140)" },
+  ],
+  rocks: [
+    { id: 1, text: "Set up Amex auto-pay", domain: "finance", due: "2026-03-31", done: false },
+    { id: 2, text: "Quit vaping completely", domain: "health", due: "2026-03-31", done: false },
+    { id: 3, text: "AFFL go/no-go decision", domain: "career", due: "2026-03-31", done: false },
+    { id: 4, text: "Monthly finance review habit", domain: "finance", due: "2026-03-31", done: false },
+    { id: 5, text: "Exercise 3x/week streak", domain: "health", due: "2026-03-31", done: false },
+  ],
+  inbox: [],
+  research: [],
+  domains: {
+    finance: { status: "amber", hero: "92% of $20K target", lines: ["NW $1.13M", "ONDS 115/140"] },
+    career: { status: "amber", hero: "AFFL: deciding", lines: ["Raisr: President", "ESOP $242K"] },
+    health: { status: "amber", hero: "●●○ (2/3 exercise)", lines: ["Vaping: $175/mo", "Sleep: 3/5"] },
+    adhd: { status: "green", hero: "● ◑ ○ energy", lines: ["2 focus wins", "Testing: no phone AM"] },
+    family: { status: "green", hero: "Ben: ✅ · Dad: 3d", lines: ["Dinner streak: 5", "Date: 8d ago"] },
+    home: { status: "green", hero: "All clear", lines: ["Equity ~$300K", "0 projects overdue"] },
+    relationships: { status: "amber", hero: "2 overdue follow-ups", lines: ["Inner: 5", "Active: 12"] },
+    learning: { status: "green", hero: "Reading: Atomic Habits", lines: ["3 books done", "7 insights"] },
+    giving: { status: "green", hero: "$500 / $2,000", lines: ["8h volunteered", "3 causes"] },
+  },
+  adhd: { energyToday: { morning: null, afternoon: null, evening: null } },
+  telegramCommands: [
+    { cmd: "/status", desc: "System overview" }, { cmd: "/help", desc: "List commands" },
+    { cmd: "/add [task]", desc: "Quick capture" }, { cmd: "/done [id]", desc: "Complete task" },
+    { cmd: "/income", desc: "Rolling income" }, { cmd: "/positions", desc: "Open options" },
+    { cmd: "/rocks", desc: "90-day goals" }, { cmd: "/energy [h/m/l]", desc: "Log energy" },
+  ],
+  gizmo_agent: {
+    runHistory: [
+      { id: 1, ts: "2026-03-05T09:00:00", trigger: "cron-9am", status: "delivered", summary: "Morning briefing: ONDS at 115, 3 positions expiring within 8 DTE, BTC holding steady", actions: ["Flagged MU CC at 52% capture", "Reminded Amex auto-pay"], rating: "useful", tokensUsed: 1842 },
+      { id: 2, ts: "2026-03-05T12:00:00", trigger: "cron-12pm", status: "delivered", summary: "Midday check: IBRX CC hit 80% capture target, MSTZ day trade opportunity flagged", actions: ["Suggested IBRX close", "MSTZ momentum alert"], rating: "useful", tokensUsed: 1560 },
+      { id: 3, ts: "2026-03-05T17:00:00", trigger: "cron-5pm", status: "failed", summary: null, actions: [], rating: null, tokensUsed: 0, error: "Anthropic credits depleted" },
+      { id: 4, ts: "2026-03-04T09:00:00", trigger: "cron-9am", status: "delivered", summary: "Morning briefing: Feb closed at 127% target, Mar starting negative due to rolls", actions: ["Feb win celebration", "Roll strategy reminder"], rating: "useful", tokensUsed: 2105 },
+      { id: 5, ts: "2026-03-04T12:00:00", trigger: "cron-12pm", status: "delivered", summary: "Midday: No urgent actions. All positions within parameters.", actions: [], rating: "noise", tokensUsed: 980 },
+      { id: 6, ts: "2026-03-04T17:00:00", trigger: "cron-5pm", status: "delivered", summary: "EOD wrap: 2 positions closed green, flywheel reinvested $564 into BTCI/QQQI", actions: ["Flywheel deposit confirmed", "Tomorrow watchlist: MU, ONDS"], rating: "useful", tokensUsed: 1720 },
+      { id: 7, ts: "2026-03-03T09:00:00", trigger: "cron-9am", status: "delivered", summary: "Monday open: VIX elevated at 23.5, crypto fear at 45. Defensive posture recommended.", actions: ["VIX warning", "Suggested pause on new CSPs"], rating: "missed", tokensUsed: 1650 },
+    ],
+    directives: [
+      { id: 1, text: "Alert if ONDS crosses 130 contracts", priority: "high", active: true, domain: "wealth", created: "2026-03-01" },
+      { id: 2, text: "Remind about Amex auto-pay every morning until done", priority: "urgent", active: true, domain: "operations", created: "2026-03-02" },
+      { id: 3, text: "Flag any position down >50% on premium collected", priority: "high", active: true, domain: "wealth", created: "2026-02-28" },
+      { id: 4, text: "Track ASTS recovery — alert if premium opportunity >$500", priority: "medium", active: true, domain: "wealth", created: "2026-03-03" },
+      { id: 5, text: "Weekly: summarize flywheel growth vs projection", priority: "medium", active: true, domain: "wealth", created: "2026-03-01" },
+      { id: 6, text: "Monitor BTC price — alert on >5% daily moves", priority: "low", active: false, domain: "wealth", created: "2026-02-25" },
+    ],
+    handoffs: [
+      { id: 1, ts: "2026-03-05T09:15:00", text: "Close IBRX CC at $12.50 — hit 80% capture target", domain: "wealth", status: "accepted", urgency: "high" },
+      { id: 2, ts: "2026-03-05T09:15:00", text: "Set up Amex auto-pay today (3rd reminder)", domain: "operations", status: "pending", urgency: "urgent" },
+      { id: 3, ts: "2026-03-05T12:10:00", text: "Consider MSTZ quick flip — momentum building", domain: "wealth", status: "accepted", urgency: "medium" },
+      { id: 4, ts: "2026-03-04T17:05:00", text: "Review ASTS position — still -$2,358 net. Roll or cut?", domain: "wealth", status: "pending", urgency: "high" },
+    ],
+    scorecard: {
+      weeklyRatings: [
+        { week: "Feb 17", useful: 14, noise: 3, missed: 1, total: 18 },
+        { week: "Feb 24", useful: 16, noise: 2, missed: 0, total: 18 },
+        { week: "Mar 3", useful: 11, noise: 2, missed: 1, total: 14 },
+      ],
+      allTimeUseful: 156, allTimeNoise: 22, allTimeMissed: 8, allTimeTotal: 186,
+      hitRate: 84, trend: "stable",
+    },
+    tokenUsage: {
+      dailyBudget: 50000, todayUsed: 3402, weekUsed: 28450, monthUsed: 142800,
+      costPerToken: 0.000003, monthlyBudgetUSD: 15,
+      runway: { tokensRemaining: 12500, estimatedRuns: 7, daysRemaining: 2.3 },
+    },
+    dataFreshness: {
+      wealthsimple: { lastSync: "2026-03-05T21:45:00", status: "fresh" },
+      monarch: { lastSync: "2026-03-03T14:00:00", status: "stale" },
+      portfolio: { lastSync: "2026-03-05T21:45:00", status: "fresh" },
+      btcPrice: { lastSync: "2026-03-06T08:00:00", status: "fresh" },
+      fearGreed: { lastSync: "2026-03-06T08:00:00", status: "fresh" },
+    },
+    promptVersion: { current: "v2.4", lastUpdated: "2026-03-03", changelog: "Added wheel rules enforcement, flywheel tracking" },
+    quickCommands: [],
+  },
+  learnings: [],
+  decisions: [],
+};
+// ── HELPERS ────────────────────────────────────────────────
+const fmtUSD = (n) => "$" + Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
+const fmtK = (n) => n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e3 ? (n / 1e3).toFixed(0) + "K" : String(n);
+const pctColor = (p) => p >= 100 ? C.green : p >= 80 ? C.gold : p >= 50 ? C.orange : C.red;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const statusColor = (s) => s === "red" ? C.red : s === "amber" ? C.orange : C.green;
+const domainLabel = (d) => ({ finance: "Financial Freedom", career: "Career", health: "Health", adhd: "ADHD & Energy", family: "Family", home: "Home", relationships: "Relationships", learning: "Learning", giving: "Giving", wealth: "Wealth", infrastructure: "Infra", operations: "Ops" }[d] || d);
+// ── STYLES ─────────────────────────────────────────────────
+const css = `
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Exo+2:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:rgba(0,170,255,.3);border-radius:2px}
+@keyframes gPulse{0%,100%{box-shadow:0 0 18px rgba(0,170,255,.07),0 0 36px rgba(0,170,255,.04)}50%{box-shadow:0 0 32px rgba(0,170,255,.18),0 0 64px rgba(0,170,255,.07)}}
+@keyframes gPulseRed{0%,100%{box-shadow:0 0 18px rgba(255,23,68,.15)}50%{box-shadow:0 0 36px rgba(255,23,68,.4)}}
+@keyframes scanDown{0%{top:-2px;opacity:.5}85%{opacity:.15}100%{top:calc(100% + 2px);opacity:0}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes rotateCW{to{transform:rotate(360deg)}}
+@keyframes rotateCCW{to{transform:rotate(-360deg)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes orbit{0%{transform:rotate(0deg) translateX(34px) rotate(0deg)}100%{transform:rotate(360deg) translateX(34px) rotate(-360deg)}}
+@keyframes eyeFlash{0%,100%{opacity:1}50%{opacity:.08}}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-3px)}75%{transform:translateX(3px)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes bubblePop{0%{transform:scale(0);opacity:0}50%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}
+@keyframes bubbleBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes typewriter{from{width:0}to{width:100%}}
+@keyframes blink{50%{border-color:transparent}}
+`;
+const S = {
+  root: { background: C.bg, color: C.t, fontFamily: "'Rajdhani', sans-serif", minHeight: "100vh", position: "relative" },
+  scanOverlay: { position: "fixed", inset: 0, background: "repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,170,255,.012) 3px,rgba(0,170,255,.012) 4px)", pointerEvents: "none", zIndex: 0 },
+  content: { position: "relative", zIndex: 1, padding: "12px 18px", display: "flex", flexDirection: "column", gap: "12px", maxWidth: "1580px", margin: "0 auto" },
+  exo: { fontFamily: "'Exo 2', sans-serif" },
+  mono: { fontFamily: "'JetBrains Mono', monospace" },
+  pnl: { background: `linear-gradient(135deg, ${C.s1}, ${C.bg})`, border: `1px solid ${C.b2}`, borderRadius: 8, overflow: "hidden", position: "relative", animation: "gPulse 5s ease-in-out infinite" },
+  scanline: { position: "absolute", left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${C.glow}, transparent)`, animation: "scanDown 5s linear infinite", opacity: 0.15, pointerEvents: "none", zIndex: 0 },
+  ph: { borderBottom: `1px solid ${C.b2}`, padding: "9px 15px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(0,170,255,.03)", position: "relative", zIndex: 1 },
+  pt: { fontFamily: "'Exo 2', sans-serif", fontSize: 11, fontWeight: 600, color: C.glow, letterSpacing: 2, textTransform: "uppercase" },
+  pb: { padding: 14, position: "relative", zIndex: 1 },
+  lbl: { fontFamily: "'Exo 2', sans-serif", fontSize: 9, fontWeight: 600, color: C.t3, letterSpacing: 2.5, textTransform: "uppercase", marginBottom: 5 },
+  val: { fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 },
+  scard: { background: "rgba(0,170,255,.04)", border: `1px solid ${C.b2}`, borderRadius: 8, padding: "15px 17px", transition: "all .2s", position: "relative", overflow: "hidden", cursor: "pointer" },
+  hbtn: { background: "transparent", border: "1px solid rgba(0,170,255,.18)", color: C.glow, padding: "5px 13px", fontFamily: "'Rajdhani', sans-serif", fontSize: 13, fontWeight: 600, cursor: "pointer", letterSpacing: 1, textTransform: "uppercase", borderRadius: 4, transition: "all .2s" },
+  badge: { display: "inline-flex", alignItems: "center", padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: 0.5 },
+};
+const Panel = ({ title, titleColor, right, children, style }) => (
+  <div style={{ ...S.pnl, ...style }}>
+    <div style={S.scanline} />
+    {title && (
+      <div style={S.ph}>
+        <span style={{ ...S.pt, color: titleColor || C.glow }}>{typeof title === "string" ? title : title}</span>
+        {right && <span style={{ ...S.exo, fontSize: 10, color: C.t3, letterSpacing: 1 }}>{right}</span>}
+      </div>
+    )}
+    <div style={S.pb}>{children}</div>
+  </div>
+);
+const GizmoAvatar = ({ state: avatarState = "idle", size = 54 }) => {
+  const isThinking = avatarState === "thinking";
+  const isOnline = avatarState === "online";
+  const isAlert = avatarState === "alert";
+  const eyeColor = isAlert ? C.red : isOnline ? C.green : C.glow;
+  const arcColor = isAlert ? C.red : isOnline ? C.green : C.glow;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, flexShrink: 0 }}>
+      <div style={{ width: size, height: size, borderRadius: "50%", position: "relative", cursor: "pointer", animation: isAlert ? "shake 1.2s ease-in-out" : "none" }}>
+        <div style={{ position: "absolute", inset: -5, borderRadius: "50%", border: `1.5px ${isThinking ? "dashed" : "solid"} ${arcColor}`, opacity: isThinking ? 0.9 : 0.45, transition: "all .4s", pointerEvents: "none", animation: isThinking ? "spin 1.4s linear infinite" : "none" }} />
+        {isThinking && <div style={{ position: "absolute", inset: -9, borderRadius: "50%", border: "1px dashed rgba(0,170,255,.25)", animation: "spin 2.2s linear infinite", pointerEvents: "none" }} />}
+        {isThinking && <div style={{ position: "absolute", width: 5, height: 5, borderRadius: "50%", background: C.glow, boxShadow: `0 0 5px ${C.glow}`, top: "50%", left: "50%", margin: -2.5, animation: "orbit 2.2s linear infinite", pointerEvents: "none" }} />}
+        <div style={{ width: size, height: size, borderRadius: "50%", background: "radial-gradient(circle at 38% 33%, rgba(0,170,255,.22), rgba(0,170,255,.07) 55%, transparent 75%)", border: "1.5px solid rgba(0,170,255,.35)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: isAlert ? undefined : isOnline ? "0 0 14px rgba(0,230,118,.35)" : "0 0 12px rgba(0,170,255,.25)", animation: isAlert ? "gPulseRed 1.4s ease-in-out infinite" : avatarState === "idle" ? "gPulse 3.5s ease-in-out infinite" : "none", transition: "all .4s" }}>
+          <svg width={size * 0.74} height={size * 0.74} viewBox="0 0 42 42" fill="none">
+            <line x1="21" y1="4" x2="21" y2="9" stroke="rgba(0,170,255,.22)" strokeWidth=".8"/>
+            <line x1="21" y1="33" x2="21" y2="38" stroke="rgba(0,170,255,.22)" strokeWidth=".8"/>
+            <line x1="4" y1="21" x2="9" y2="21" stroke="rgba(0,170,255,.22)" strokeWidth=".8"/>
+            <line x1="33" y1="21" x2="38" y2="21" stroke="rgba(0,170,255,.22)" strokeWidth=".8"/>
+            <rect x="10" y="12" width="22" height="20" rx="4" fill="rgba(0,170,255,.05)" stroke="rgba(0,170,255,.28)" strokeWidth=".8"/>
+            <rect x="13" y="17" width="7" height="4" rx="1.5" fill={eyeColor} style={{ animation: isThinking ? "eyeFlash .28s ease-in-out infinite" : isAlert ? "pulse 1s ease-in-out infinite" : "none", opacity: avatarState === "idle" ? 0.5 : 1 }} />
+            <rect x="22" y="17" width="7" height="4" rx="1.5" fill={eyeColor} style={{ animation: isThinking ? "eyeFlash .28s ease-in-out infinite" : isAlert ? "pulse 1s ease-in-out infinite" : "none", opacity: avatarState === "idle" ? 0.5 : 1 }} />
+            <path d="M15 26 Q21 30 27 26" stroke={eyeColor} strokeWidth="1.2" fill="none" strokeLinecap="round" opacity=".55"/>
+            <rect x="7" y="18" width="3" height="6" rx="1" fill="rgba(0,170,255,.18)" stroke="rgba(0,170,255,.28)" strokeWidth=".5"/>
+            <rect x="32" y="18" width="3" height="6" rx="1" fill="rgba(0,170,255,.18)" stroke="rgba(0,170,255,.28)" strokeWidth=".5"/>
+            <line x1="21" y1="12" x2="21" y2="8" stroke="rgba(0,170,255,.38)" strokeWidth="1"/>
+            <circle cx="21" cy="7" r="1.5" fill="none" stroke="rgba(0,170,255,.45)" strokeWidth=".8"/>
+            <circle cx="21" cy="7" r=".6" fill={C.glow} opacity=".65"/>
+          </svg>
+        </div>
+        {isOnline && <div style={{ position: "absolute", bottom: 1, right: 1, width: 9, height: 9, borderRadius: "50%", background: C.green, boxShadow: `0 0 5px ${C.green}`, border: `1.5px solid ${C.bg}`, zIndex: 2 }} />}
+      </div>
+      <div style={{ ...S.exo, fontSize: 13, fontWeight: 800, color: C.glow, letterSpacing: 4, marginTop: 3, textShadow: `0 0 10px ${C.glow}44` }}>GIZMO</div>
+      <div style={{ ...S.exo, fontSize: 11, fontWeight: 600, color: isAlert ? C.red : isOnline ? C.green : isThinking ? C.cyan : C.t2, letterSpacing: 1.5, transition: "color .3s" }}>
+        {isThinking ? "THINKING..." : isOnline ? "ONLINE · v3.1" : isAlert ? "ALERT" : "IDLE"}
+      </div>
+    </div>
+  );
+};
+const GizmoBubble = ({ text, show }) => {
+  const [displayed, setDisplayed] = React.useState("");
+  const [done, setDone] = React.useState(false);
+  React.useEffect(() => {
+    if (!show || !text) { setDisplayed(""); setDone(false); return; }
+    setDisplayed(""); setDone(false);
+    let i = 0;
+    const timer = setInterval(() => {
+      i++;
+      setDisplayed(text.slice(0, i));
+      if (i >= text.length) { clearInterval(timer); setDone(true); }
+    }, 45);
+    return () => clearInterval(timer);
+  }, [text, show]);
+  if (!show || !text) return null;
+  return (
+    <div style={{ position: "relative", animation: "bubblePop 0.4s ease-out", maxWidth: 400, margin: "0 auto" }}>
+      <div style={{ background: "rgba(0,170,255,0.12)", border: "2px solid rgba(0,170,255,0.35)", borderRadius: 16, padding: "16px 20px", position: "relative", boxShadow: "0 0 25px rgba(0,170,255,0.15)", animation: done ? "bubbleBounce 2s ease-in-out infinite" : "none" }}>
+        <div style={{ position: "absolute", top: -10, left: "50%", marginLeft: -8, width: 0, height: 0, borderLeft: "8px solid transparent", borderRight: "8px solid transparent", borderBottom: "10px solid rgba(0,170,255,0.35)" }} />
+        <div style={{ fontFamily: "'Exo 2', sans-serif", fontSize: 20, fontWeight: 700, color: "#7fdbff", textAlign: "center", lineHeight: 1.4, textShadow: "0 0 10px rgba(0,170,255,0.3)" }}>
+          {displayed}{!done && <span style={{ borderRight: "2px solid #00aaff", animation: "blink 0.7s step-end infinite", marginLeft: 2 }}>&nbsp;</span>}
+        </div>
+      </div>
+      <div style={{ textAlign: "center", marginTop: 6 }}>
+        <span style={{ fontFamily: "'Exo 2', sans-serif", fontSize: 9, color: "rgba(0,170,255,0.4)", letterSpacing: 3 }}>⚙ GIZMO SAYS</span>
+      </div>
+    </div>
+  );
+};
+const ArcReactorMini = ({ pct, size = 120 }) => {
+  const color = pctColor(pct);
+  const rings = [0, 12, 24, 36, 48];
+  return (
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+      {rings.map((inset, i) => (
+        <div key={i} style={{ position: "absolute", inset: inset * (size / 185), borderRadius: "50%", border: `1.5px solid rgba(0,170,255,${0.3 - i * 0.05})`, animation: i === 0 ? "gPulse 3s ease-in-out infinite" : i === 1 ? "rotateCW 22s linear infinite" : i === 2 ? "rotateCCW 17s linear infinite" : "none" }} />
+      ))}
+      <div style={{ position: "absolute", inset: size * 0.45, borderRadius: "50%", background: `radial-gradient(circle, ${color}22, ${color}09)`, boxShadow: `0 0 28px ${color}, 0 0 55px ${color}44, inset 0 0 18px ${color}11` }} />
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ ...S.exo, fontSize: size * 0.18, fontWeight: 800, color, textShadow: `0 0 18px ${color}`, letterSpacing: -1 }}>{pct}%</span>
+      </div>
+    </div>
+  );
+};
+const Bar = ({ pct, color, height = 4 }) => (
+  <div style={{ height, background: "rgba(0,170,255,.1)", borderRadius: 2, overflow: "hidden", marginTop: 8 }}>
+    <div style={{ height: "100%", width: `${clamp(pct, 0, 100)}%`, background: color, borderRadius: 2, boxShadow: `0 0 7px ${color}55`, transition: "width .7s ease" }} />
+  </div>
+);
+const Clock = () => {
+  const [time, setTime] = useState("");
+  useEffect(() => {
+    const tick = () => setTime(new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "America/Edmonton" }) + " MT");
+    tick();
+    const i = setInterval(tick, 1000);
+    return () => clearInterval(i);
+  }, []);
+  return <span style={{ ...S.mono, fontSize: 13, color: C.t2 }}>{time}</span>;
+};
+// ═══════════════════════════════════════════════════════════════
+// MAIN APP
+// ═══════════════════════════════════════════════════════════════
+function GizmoCommandCentre() {
+  const [state, setState] = useState(DEFAULT_STATE);
+  const [tab, setTab] = useState("dashboard");
+  const [cmdOpen, setCmdOpen] = useState(false);
+  const [cmdQuery, setCmdQuery] = useState("");
+  const [gizmoState, setGizmoState] = useState("idle");
+  const [gizmoResponse, setGizmoResponse] = useState(null);
+  const [logFilter, setLogFilter] = useState("ALL");
+  const [newTaskText, setNewTaskText] = useState("");
+  const [newInboxText, setNewInboxText] = useState("");
+  const [newRockText, setNewRockText] = useState("");
+  const [newDirectiveText, setNewDirectiveText] = useState("");
+  const [newQuickCmd, setNewQuickCmd] = useState("");
+  const [agentFilter, setAgentFilter] = useState("gizmo");
+  const saveTimer = useRef(null);
+  // Fetch live data from server, merge with defaults, fallback to localStorage
+  const fetchState = useCallback(async () => {
+    try {
+      const resp = await fetch("/state.json?t=" + Date.now());
+      if (resp.ok) {
+        const serverData = await resp.json();
+        const merged = { ...DEFAULT_STATE, ...serverData };
+        if (!merged.gizmo_agent || !merged.gizmo_agent.scorecard) merged.gizmo_agent = { ...DEFAULT_STATE.gizmo_agent, ...(serverData.gizmo_agent || {}) };
+        if (!merged.gizmo_agent.tokenUsage) merged.gizmo_agent.tokenUsage = DEFAULT_STATE.gizmo_agent.tokenUsage;
+        if (!merged.gizmo_agent.dataFreshness) merged.gizmo_agent.dataFreshness = DEFAULT_STATE.gizmo_agent.dataFreshness;
+        if (!merged.gizmo_agent.promptVersion) merged.gizmo_agent.promptVersion = DEFAULT_STATE.gizmo_agent.promptVersion;
+        if (!merged.gizmo_agent.scorecard) merged.gizmo_agent.scorecard = DEFAULT_STATE.gizmo_agent.scorecard;
+        if (merged.gizmo_agent.tokenUsage && !merged.gizmo_agent.tokenUsage.runway) merged.gizmo_agent.tokenUsage.runway = DEFAULT_STATE.gizmo_agent.tokenUsage.runway;
+        // Merge: server data wins for tasks/rocks/inbox, but keep local-only additions
+        try {
+          const local = localStorage.getItem(STORAGE_KEY);
+          if (local) {
+            const localData = JSON.parse(local);
+            // Keep local ADHD settings (purely client-side)
+            if (localData.adhd) merged.adhd = localData.adhd;
+            // For tasks: use server version (Gizmo keeps them fresh)
+            // Local-only tasks (added via dashboard) have id > 1000000000 (timestamp-based)
+            if (localData.tasks && merged.tasks) {
+              const serverIds = new Set(merged.tasks.map(t => t.id));
+              const localOnly = localData.tasks.filter(t => t.id > 1000000000 && !serverIds.has(t.id));
+              if (localOnly.length > 0) merged.tasks = [...merged.tasks, ...localOnly];
+            }
+          }
+        } catch (e) {}
+        setState(merged);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+        console.log("[Gizmo] State refreshed from server", new Date().toLocaleTimeString());
+        return;
+      }
+    } catch (e) { console.log("[Gizmo] Server fetch failed, using localStorage:", e); }
+    // Fallback to localStorage
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const merged = { ...DEFAULT_STATE, ...parsed };
+        if (!merged.gizmo_agent || !merged.gizmo_agent.scorecard) merged.gizmo_agent = { ...DEFAULT_STATE.gizmo_agent, ...(parsed.gizmo_agent || {}) };
+        setState(merged);
+      }
+    } catch (e) { console.log("Storage load error:", e); }
+  }, []);
+  // Initial load + auto-refresh every 60 seconds
+  useEffect(() => {
+    // One-time cache bust (v4.1) — clear stale localStorage
+    if (localStorage.getItem("gizmo-cache-version") !== "4.1") {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.setItem("gizmo-cache-version", "4.1");
+      console.log("[Gizmo] Cache busted — loading fresh from server");
+    }
+    fetchState();
+    const interval = setInterval(fetchState, 60000);
+    return () => clearInterval(interval);
+  }, [fetchState]);
+  const save = useCallback((newState) => {
+    setState(newState);
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+      } catch (e) { console.log("Storage save error:", e); }
+    }, 500);
+  }, []);
+  useEffect(() => {
+    const hasRed = state.alerts.some((a) => a.level === "red");
+    if (hasRed) setGizmoState("alert");
+    else setGizmoState("online");
+  }, [state.alerts]);
+  useEffect(() => {
+    const handler = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); setCmdOpen((o) => !o); setCmdQuery(""); } if (e.key === "Escape") setCmdOpen(false); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+  const cycleTask = (id) => {
+    const next = { queued: "in_progress", in_progress: "done", done: "queued" };
+    const task = state.tasks.find((t) => t.id === id);
+    const newTasks = state.tasks.map((t) => t.id === id ? { ...t, status: next[t.status] || "queued" } : t);
+    const newActivity = [{ ts: new Date().toISOString(), type: "task", text: `${task?.title} → ${next[task?.status]}` }, ...state.activity].slice(0, 50);
+    save({ ...state, tasks: newTasks, activity: newActivity });
+  };
+  const addTask = () => {
+    if (!newTaskText.trim()) return;
+    const newTask = { id: Date.now(), title: newTaskText.trim(), status: "queued", priority: "medium", effort: "", domain: "operations" };
+    save({ ...state, tasks: [...state.tasks, newTask], activity: [{ ts: new Date().toISOString(), type: "task", text: `Added: ${newTask.title}` }, ...state.activity].slice(0, 50) });
+    setNewTaskText("");
+  };
+  const getTop3 = () => {
+    const items = [];
+    const overdueRocks = state.rocks.filter((r) => !r.done && new Date(r.due) < new Date());
+    const urgentTasks = [...state.tasks].filter((t) => t.status !== "done").sort((a, b) => { const o = { urgent: 0, high: 1, medium: 2, low: 3 }; return (o[a.priority] ?? 2) - (o[b.priority] ?? 2); });
+    const redDomains = Object.entries(state.domains).filter(([, v]) => v.status === "red");
+    if (overdueRocks[0]) items.push({ text: overdueRocks[0].text, domain: overdueRocks[0].domain, color: C.red });
+    if (urgentTasks[0]) items.push({ text: urgentTasks[0].title, domain: urgentTasks[0].domain, color: PC[urgentTasks[0].priority] || C.gold });
+    if (redDomains[0]) items.push({ text: `Check ${domainLabel(redDomains[0][0])}`, domain: redDomains[0][0], color: C.red });
+    if (items.length < 3 && urgentTasks[1]) items.push({ text: urgentTasks[1].title, domain: urgentTasks[1].domain, color: PC[urgentTasks[1].priority] || C.gold });
+    if (items.length < 3) {
+      const activeRock = state.rocks.find((r) => !r.done);
+      if (activeRock) items.push({ text: activeRock.text, domain: activeRock.domain, color: C.gold });
+    }
+    return items.slice(0, 3);
+  };
+  const Header = () => (
+    <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", alignItems: "center", gap: 20, padding: "11px 18px", background: `linear-gradient(135deg, #051828, ${C.bg})`, border: `1px solid ${C.b2}`, borderRadius: 10, animation: "gPulse 6s ease-in-out infinite" }}>
+      <GizmoAvatar state={gizmoState} />
+      <div style={{ textAlign: "center" }}>
+        <div style={{ ...S.exo, fontSize: 27, fontWeight: 800, color: C.t, letterSpacing: 8, textShadow: "0 0 28px rgba(0,170,255,.35)" }}>G I Z M O</div>
+        <div style={{ ...S.exo, fontSize: 9, color: C.t3, letterSpacing: 3, marginTop: 2 }}>COMMAND CENTER • EXECUTIVE INTERFACE</div>
+        {state.gizmoBubble && state.gizmoBubble.text && <div style={{ marginTop: 10 }}><GizmoBubble text={state.gizmoBubble.text} show={true} /></div>}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 11, justifyContent: "flex-end" }}>
+        <Clock />
+        <div style={{ display: "flex", alignItems: "center", gap: 6, border: `1px solid ${C.green}`, padding: "3px 11px", borderRadius: 4, boxShadow: "0 0 8px rgba(0,230,118,.15)" }}>
+          <div style={{ width: 7, height: 7, borderRadius: "50%", background: C.green, boxShadow: `0 0 7px ${C.green}`, animation: "pulse 2s infinite" }} />
+          <span style={{ ...S.exo, fontSize: 10, fontWeight: 700, color: C.green, letterSpacing: 2 }}>ONLINE</span>
+        </div>
+      </div>
+    </div>
+  );
+  const tabs = [
+    { id: "dashboard", label: "Dashboard", icon: "◈" },
+    { id: "today", label: "Today", icon: "☀" },
+    { id: "freedom", label: "Freedom", icon: "$" },
+    { id: "rocks", label: "Rocks", icon: "◆" },
+    { id: "agents", label: "Agents", icon: "◎" },
+    { id: "gizmo", label: "Gizmo", icon: "⚙" },
+  ];
+  const NavBar = () => (
+    <div style={{ display: "flex", gap: 2, background: C.s1, borderRadius: 6, padding: 2, border: `1px solid ${C.b}` }}>
+      {tabs.map((t) => (
+        <button key={t.id} onClick={() => { setTab(t.id); }} style={{ flex: 1, padding: "8px 12px", background: tab === t.id ? "rgba(0,170,255,.12)" : "transparent", border: tab === t.id ? `1px solid ${C.b2}` : "1px solid transparent", borderRadius: 4, color: tab === t.id ? C.glow : C.t3, fontFamily: "'Exo 2', sans-serif", fontSize: 11, fontWeight: 600, letterSpacing: 1.5, textTransform: "uppercase", cursor: "pointer", transition: "all .2s", position: "relative", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          <span>{t.icon}</span> {t.label}
+        </button>
+      ))}
+    </div>
+  );
+  const AlertBanner = () => {
+    const reds = state.alerts.filter((a) => a.level === "red");
+    if (!reds.length) return null;
+    return (
+      <div style={{ background: "rgba(255,23,68,.07)", border: "1px solid rgba(255,23,68,.25)", borderRadius: 6, padding: "8px 15px", display: "flex", alignItems: "center", gap: 10, animation: "gPulseRed 2s ease-in-out infinite", cursor: "pointer" }} onClick={() => setTab("gizmo")}>
+        <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.red, boxShadow: `0 0 8px ${C.red}`, animation: "pulse 1s infinite", flexShrink: 0 }} />
+        <span style={{ ...S.exo, fontSize: 11, fontWeight: 700, color: C.red, letterSpacing: 2 }}>ALERT</span>
+        <span style={{ fontSize: 13, color: C.t, flex: 1 }}>{reds[0].text}{reds.length > 1 ? ` (+${reds.length - 1} more)` : ""}</span>
+      </div>
+    );
+  };
+  const Top3Today = () => {
+    const items = getTop3();
+    if (!items.length) return null;
+    return (
+      <Panel title="⚡ TOP 3 TODAY" titleColor={C.gold} right="Auto-generated priorities">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
+          {items.map((item, i) => (
+            <div key={i} style={{ ...S.scard, borderLeft: `3px solid ${item.color}`, display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ ...S.exo, fontSize: 22, fontWeight: 800, color: item.color, opacity: 0.6 }}>{i + 1}</span>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: C.t }}>{item.text}</div>
+                <div style={{ ...S.exo, fontSize: 9, color: DOMAIN_COLORS[item.domain] || C.t3, letterSpacing: 1.5, fontWeight: 600, textTransform: "uppercase", marginTop: 2 }}>{domainLabel(item.domain)}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Panel>
+    );
+  };
+  const AgentStatus = () => {
+    const mx = state.gizmo_agent || {};
+    const sc = mx.scorecard || {};
+    const tk = mx.tokenUsage || {};
+    const rwy = tk.runway || {};
+    const gizmoAgent = state.agents.find(a => a.name === "Gizmo");
+    const isOnline = gizmoAgent?.status === "online";
+    const pendingHandoffs = (mx.handoffs || []).filter(h => h.status === "pending");
+    const hitRate = sc.hitRate || 0;
+    const hitColor = hitRate >= 80 ? C.green : hitRate >= 60 ? C.gold : C.red;
+    const runwayColor = (rwy.daysRemaining || 0) <= 1 ? C.red : (rwy.daysRemaining || 0) <= 3 ? C.orange : C.green;
+    const lastRun = (mx.runHistory || [])[0];
+    const lastRunTime = lastRun ? new Date(lastRun.ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }) : "--:--";
+
+    const handleHandoff = (id, action) => {
+      const handoffs = (mx.handoffs || []).map(h => h.id === id ? { ...h, status: action } : h);
+      const item = (mx.handoffs || []).find(h => h.id === id);
+      let newState = { ...state, gizmo_agent: { ...mx, handoffs } };
+      if (action === "accepted" && item) {
+        const newTask = { id: Date.now(), title: item.text, status: "queued", priority: item.urgency === "urgent" ? "urgent" : "high", effort: "", domain: item.domain };
+        newState = { ...newState, tasks: [...state.tasks, newTask], activity: [{ ts: new Date().toISOString(), type: "task", text: `Gizmo handoff accepted: ${item.text.slice(0,40)}...` }, ...state.activity].slice(0, 50) };
+      }
+      save(newState);
+    };
+
+    return (
+      <Panel title="◎ GIZMO" right={<span style={{ display: "flex", alignItems: "center", gap: 6 }}><div style={{ width: 7, height: 7, borderRadius: "50%", background: isOnline ? C.green : C.red, boxShadow: `0 0 6px ${isOnline ? C.green : C.red}`, animation: isOnline ? "pulse 2s infinite" : "none" }} /><span style={{ ...S.exo, fontSize: 9, color: isOnline ? C.green : C.red, letterSpacing: 1 }}>{isOnline ? "ONLINE" : "ERROR"}</span></span>}>
+        {/* KPI Strip */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 10 }}>
+          {[
+            ["Hit Rate", `${hitRate}%`, hitColor],
+            ["Runway", `${(rwy.daysRemaining || 0).toFixed(1)}d`, runwayColor],
+            ["Pending", pendingHandoffs.length, pendingHandoffs.length > 0 ? C.gold : C.t3],
+            ["Last Run", lastRunTime, lastRun?.status === "failed" ? C.red : C.cyan],
+          ].map(([l, v, c]) => (
+            <div key={l} style={{ background: "rgba(0,170,255,.04)", borderRadius: 4, padding: "5px 8px", textAlign: "center" }}>
+              <div style={{ ...S.mono, fontSize: 15, fontWeight: 700, color: c }}>{v}</div>
+              <div style={{ ...S.exo, fontSize: 7, color: C.t3, letterSpacing: 1.5, textTransform: "uppercase" }}>{l}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Pending Handoffs — quick actions */}
+        {pendingHandoffs.length > 0 && (
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ ...S.exo, fontSize: 8, color: C.gold, letterSpacing: 2, marginBottom: 6, textTransform: "uppercase" }}>⚡ Gizmo Says</div>
+            {pendingHandoffs.slice(0, 3).map(h => (
+              <div key={h.id} style={{ background: "rgba(255,170,0,.04)", border: `1px solid rgba(255,170,0,.15)`, borderRadius: 4, padding: "6px 8px", marginBottom: 4 }}>
+                <div style={{ fontSize: 11, color: C.t, lineHeight: 1.3, marginBottom: 4 }}>{h.text}</div>
+                <div style={{ display: "flex", gap: 4 }}>
+                  <button onClick={() => handleHandoff(h.id, "accepted")} style={{ padding: "2px 8px", background: "rgba(0,230,118,.1)", border: `1px solid ${C.green}`, borderRadius: 3, color: C.green, fontFamily: "'Exo 2', sans-serif", fontSize: 8, fontWeight: 700, cursor: "pointer", letterSpacing: 1 }}>✓ DO IT</button>
+                  <button onClick={() => handleHandoff(h.id, "dismissed")} style={{ padding: "2px 8px", background: "rgba(255,255,255,.03)", border: `1px solid ${C.b}`, borderRadius: 3, color: C.t3, fontFamily: "'Exo 2', sans-serif", fontSize: 8, fontWeight: 700, cursor: "pointer", letterSpacing: 1 }}>SKIP</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Other agents */}
+        <div style={{ borderTop: `1px solid ${C.b}`, paddingTop: 8 }}>
+          {state.agents.map((a, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", borderBottom: i < state.agents.length - 1 ? `1px solid ${C.b}` : "none" }}>
+              <div style={{ width: 6, height: 6, borderRadius: "50%", background: a.status === "online" ? C.green : a.status === "error" ? C.red : C.t3, boxShadow: `0 0 4px ${a.status === "online" ? C.green : a.status === "error" ? C.red : "transparent"}` }} />
+              <span style={{ ...S.mono, fontSize: 11, color: C.t2, flex: 1 }}>{a.name}</span>
+              <span style={{ ...S.badge, background: a.status === "online" ? "rgba(0,230,118,.1)" : "rgba(255,23,68,.1)", color: a.status === "online" ? C.green : C.red, fontSize: 8 }}>{a.status}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Deep dive link */}
+        <div onClick={() => setTab("agents")} style={{ textAlign: "center", marginTop: 8, padding: "5px 0", borderTop: `1px solid ${C.b}`, cursor: "pointer" }}>
+          <span style={{ ...S.exo, fontSize: 9, color: C.glow, letterSpacing: 2, fontWeight: 600 }}>◎ FULL AGENT COMMAND →</span>
+        </div>
+      </Panel>
+    );
+  };
+  const Kanban = () => {
+    const cols = [
+      { key: "queued", label: "TO DO", color: C.t3 },
+      { key: "in_progress", label: "IN PROGRESS", color: C.cyan },
+      { key: "done", label: "DONE", color: C.green },
+    ];
+    return (
+      <Panel title="✦ TASK BOARD" right={`${state.tasks.filter((t) => t.status !== "done").length} open`}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+          {cols.map((col) => (
+            <div key={col.key}>
+              <div style={{ ...S.exo, fontSize: 9, fontWeight: 700, color: col.color, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8, textAlign: "center", paddingBottom: 6, borderBottom: `1px solid ${C.b}` }}>
+                {col.label} <span style={{ ...S.mono, fontSize: 10 }}>({state.tasks.filter((t) => t.status === col.key).length})</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 60 }}>
+                {state.tasks.filter((t) => t.status === col.key).sort((a, b) => { const o = { urgent: 0, high: 1, medium: 2, low: 3 }; return (o[a.priority] ?? 2) - (o[b.priority] ?? 2); }).map((t) => (
+                  <div key={t.id} onClick={() => cycleTask(t.id)} style={{ background: "rgba(0,170,255,.03)", border: `1px solid ${C.b}`, borderLeft: `3px solid ${PC[t.priority] || C.t3}`, padding: "7px 8px", borderRadius: 4, cursor: "pointer", transition: "all .15s", opacity: col.key === "done" ? 0.4 : 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: col.key === "done" ? C.t3 : C.t, textDecoration: col.key === "done" ? "line-through" : "none", lineHeight: 1.3 }}>{t.title}</div>
+                    <div style={{ display: "flex", gap: 6, marginTop: 4, alignItems: "center" }}>
+                      <span style={{ ...S.exo, fontSize: 8, color: DOMAIN_COLORS[t.domain] || C.t3, letterSpacing: 1, fontWeight: 600, textTransform: "uppercase" }}>{t.domain}</span>
+                      {t.effort && <span style={{ fontSize: 9, color: C.t3 }}>{t.effort}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+          <input value={newTaskText} onChange={(e) => setNewTaskText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addTask()} placeholder="+ Quick add task..." style={{ flex: 1, background: "rgba(0,170,255,.04)", border: `1px solid ${C.b}`, borderRadius: 4, padding: "6px 10px", color: C.t, fontFamily: "'Rajdhani', sans-serif", fontSize: 13, outline: "none" }} />
+          <button onClick={addTask} style={S.hbtn}>ADD</button>
+        </div>
+      </Panel>
+    );
+  };
+  const HeartbeatLog = () => {
+    const filters = ["ALL", "TASK", "ALERT", "SYSTEM"];
+    const typeColors = { task: C.cyan, alert: C.orange, system: C.blue };
+    const typeIcons = { task: "✦", alert: "⚠", system: "⚙" };
+    const filtered = logFilter === "ALL" ? state.activity : state.activity.filter((a) => a.type === logFilter.toLowerCase());
+    return (
+      <Panel title="◉ HEARTBEAT" right="Live log">
+        <div style={{ display: "flex", gap: 2, marginBottom: 10 }}>
+          {filters.map((f) => (
+            <button key={f} onClick={() => setLogFilter(f)} style={{ padding: "3px 8px", background: logFilter === f ? "rgba(0,170,255,.15)" : "transparent", border: `1px solid ${logFilter === f ? C.b2 : "transparent"}`, borderRadius: 3, color: logFilter === f ? C.glow : C.t3, fontFamily: "'Exo 2', sans-serif", fontSize: 9, fontWeight: 600, letterSpacing: 1, cursor: "pointer", textTransform: "uppercase" }}>{f}</button>
+          ))}
+        </div>
+        <div style={{ maxHeight: 300, overflowY: "auto" }}>
+          {filtered.map((a, i) => {
+            const d = new Date(a.ts);
+            const time = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+            return (
+              <div key={i} style={{ display: "flex", gap: 8, padding: "5px 0", borderBottom: `1px solid ${C.b}`, alignItems: "flex-start" }}>
+                <span style={{ ...S.mono, fontSize: 10, color: C.t3, flexShrink: 0, minWidth: 38 }}>{time}</span>
+                <span style={{ fontSize: 11, color: typeColors[a.type] || C.t3, flexShrink: 0 }}>{typeIcons[a.type] || "·"}</span>
+                <span style={{ fontSize: 12, color: C.t2, lineHeight: 1.3 }}>{a.text}</span>
+              </div>
+            );
+          })}
+          {!filtered.length && <div style={{ fontSize: 12, color: C.t3, textAlign: "center", padding: 20 }}>No activity</div>}
+        </div>
+      </Panel>
+    );
+  };
+  const FinanceHero = () => {
+    const r30 = state.income.rolling30d;
+    const fin = state.finance;
+    const c30 = pctColor(r30.pctOfTarget);
+    return (
+      <div style={{ ...S.pnl, cursor: "pointer" }} onClick={() => setTab("freedom")}>
+        <div style={S.scanline} />
+        <div style={S.ph}>
+          <span style={{ ...S.pt, color: C.gold }}>◈ FINANCIAL FREEDOM</span>
+          <span style={{ ...S.exo, fontSize: 10, color: C.t3, letterSpacing: 1 }}>TAP FOR FULL SCORECARD →</span>
+        </div>
+        <div style={{ ...S.pb, display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
+          <ArcReactorMini pct={r30.pctOfTarget} size={120} />
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={S.lbl}>30-DAY ROLLING INCOME</div>
+            <div style={{ ...S.val, fontSize: 28, color: c30 }}>{fmtUSD(r30.totalCAD)} CAD</div>
+            <Bar pct={r30.pctOfTarget} color={c30} />
+            <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
+              {[["NW", "$" + fmtK(fin.netWorth), C.cyan], ["ONDS", `${fin.onds}/${fin.ondsMax}`, fin.onds >= 135 ? C.red : fin.onds >= 115 ? C.orange : C.cyan], ["BTC", `${fin.btc}`, C.gold], ["SURPLUS", `+$${fin.monthlySurplus.toLocaleString()}`, C.green]].map(([l, v, c]) => (
+                <div key={l}>
+                  <div style={{ ...S.exo, fontSize: 8, color: C.t3, letterSpacing: 2 }}>{l}</div>
+                  <div style={{ ...S.mono, fontSize: 14, fontWeight: 700, color: c }}>{v}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+  const RocksStrip = () => {
+    const active = state.rocks.filter((r) => !r.done).length;
+    const done = state.rocks.filter((r) => r.done).length;
+    const overdue = state.rocks.filter((r) => !r.done && new Date(r.due) < new Date()).length;
+    return (
+      <div onClick={() => setTab("rocks")} style={{ ...S.scard, display: "flex", alignItems: "center", justifyContent: "center", gap: 16, cursor: "pointer", padding: "10px 18px" }}>
+        <span style={{ ...S.exo, fontSize: 11, fontWeight: 700, color: C.glow, letterSpacing: 2 }}>◆ 90-DAY ROCKS</span>
+        <span style={{ ...S.mono, fontSize: 13, color: C.cyan }}>{active} active</span>
+        <span style={{ color: C.t3 }}>·</span>
+        <span style={{ ...S.mono, fontSize: 13, color: C.green }}>{done} done</span>
+        {overdue > 0 && <><span style={{ color: C.t3 }}>·</span><span style={{ ...S.mono, fontSize: 13, color: C.red, animation: "pulse 1s infinite" }}>{overdue} overdue</span></>}
+      </div>
+    );
+  };
+  const DomainGrid = () => {
+    const domains = Object.entries(state.domains);
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
+        {domains.map(([key, d]) => (
+          <div key={key} onClick={() => key === "finance" ? setTab("freedom") : null} style={{ ...S.scard, borderLeft: `3px solid ${statusColor(d.status)}`, cursor: key === "finance" ? "pointer" : "default" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: statusColor(d.status), boxShadow: d.status === "red" ? `0 0 6px ${C.red}` : "none" }} />
+                <span style={{ ...S.exo, fontSize: 11, fontWeight: 700, color: DOMAIN_COLORS[key] || C.t2, letterSpacing: 1.5, textTransform: "uppercase" }}>{domainLabel(key)}</span>
+              </div>
+              {key === "finance" && <span style={{ fontSize: 11, color: C.t3 }}>→</span>}
+            </div>
+            <div style={{ ...S.mono, fontSize: 14, fontWeight: 700, color: C.t, marginBottom: 4 }}>{d.hero}</div>
+            {d.lines.map((l, i) => (
+              <div key={i} style={{ fontSize: 12, color: C.t2, lineHeight: 1.4 }}>· {l}</div>
+            ))}
+          </div>
+        ))}
+      </div>
+    );
+  };
+  const DashboardView = () => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <AlertBanner />
+      <Top3Today />
+      <div style={{ display: "grid", gridTemplateColumns: "240px 1fr 280px", gap: 12 }}>
+        <AgentStatus />
+        <Kanban />
+        <HeartbeatLog />
+      </div>
+      <FinanceHero />
+      <RocksStrip />
+      <DomainGrid />
+    </div>
+  );
+  const TodayView = () => {
+    const energy = state.adhd.energyToday;
+    const blocks = ["morning", "afternoon", "evening"];
+    const levels = [{ key: "low", label: "Low", color: C.red }, { key: "med", label: "Med", color: C.gold }, { key: "high", label: "High", color: C.green }];
+    const setEnergy = (block, level) => {
+      const newAdhd = { ...state.adhd, energyToday: { ...energy, [block]: level } };
+      save({ ...state, adhd: newAdhd });
+    };
+    const top3 = getTop3();
+    const theOne = top3[0];
+    const todayTasks = [...state.tasks].filter((t) => t.status !== "done").sort((a, b) => { const o = { urgent: 0, high: 1, medium: 2, low: 3 }; return (o[a.priority] ?? 2) - (o[b.priority] ?? 2); });
+    const quickWins = todayTasks.filter((t) => t.effort === "5 min" || t.effort === "1 cycle");
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <Panel title="⚡ ENERGY CHECK-IN" titleColor={C.gold}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+            {blocks.map((b) => (
+              <div key={b} style={{ textAlign: "center" }}>
+                <div style={{ ...S.exo, fontSize: 10, color: C.t3, letterSpacing: 2, marginBottom: 8, textTransform: "uppercase" }}>{b}</div>
+                <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
+                  {levels.map((l) => (
+                    <button key={l.key} onClick={() => setEnergy(b, l.key)} style={{ padding: "6px 12px", background: energy[b] === l.key ? `${l.color}22` : "transparent", border: `1px solid ${energy[b] === l.key ? l.color : C.b}`, borderRadius: 4, color: energy[b] === l.key ? l.color : C.t3, fontFamily: "'Exo 2', sans-serif", fontSize: 10, fontWeight: 600, cursor: "pointer", letterSpacing: 1 }}>{l.label}</button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+        {theOne && (
+          <Panel title="◈ THE ONE THING" titleColor={C.gold}>
+            <div style={{ ...S.scard, borderLeft: `4px solid ${theOne.color}`, textAlign: "center", padding: 20 }}>
+              <div style={{ ...S.exo, fontSize: 9, color: DOMAIN_COLORS[theOne.domain] || C.t3, letterSpacing: 2, textTransform: "uppercase", marginBottom: 6 }}>{domainLabel(theOne.domain)}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: C.t }}>{theOne.text}</div>
+            </div>
+          </Panel>
+        )}
+        <Panel title="☰ TODAY'S TASKS" right={`${todayTasks.length} remaining`}>
+          {todayTasks.map((t) => (
+            <div key={t.id} onClick={() => cycleTask(t.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0", borderBottom: `1px solid ${C.b}`, cursor: "pointer" }}>
+              <span style={{ color: t.status === "in_progress" ? C.cyan : C.t3, fontSize: 14, flexShrink: 0 }}>{SI[t.status]}</span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: C.t, flex: 1 }}>{t.title}</span>
+              <span style={{ ...S.exo, fontSize: 9, color: DOMAIN_COLORS[t.domain] || C.t3, letterSpacing: 1 }}>{t.domain}</span>
+              <span style={{ ...S.badge, background: `${PC[t.priority]}22`, color: PC[t.priority], fontSize: 9 }}>{t.priority}</span>
+            </div>
+          ))}
+        </Panel>
+        {quickWins.length > 0 && (
+          <Panel title="⚡ QUICK WINS" titleColor={C.green} right="Under 5 min">
+            {quickWins.map((t) => (
+              <div key={t.id} onClick={() => cycleTask(t.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${C.b}`, cursor: "pointer" }}>
+                <span style={{ fontSize: 12, color: C.green }}>⚡</span>
+                <span style={{ fontSize: 13, color: C.t }}>{t.title}</span>
+                <span style={{ marginLeft: "auto", ...S.mono, fontSize: 10, color: C.t3 }}>{t.effort}</span>
+              </div>
+            ))}
+          </Panel>
+        )}
+      </div>
+    );
+  };
+  const RocksView = () => {
+    const qEnd = new Date("2026-03-31");
+    const daysLeft = Math.max(0, Math.ceil((qEnd - new Date()) / 86400000));
+    const done = state.rocks.filter((r) => r.done).length;
+    const total = state.rocks.length;
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    const [showDone, setShowDone] = useState(false);
+    const toggleRock = (id) => {
+      const newRocks = state.rocks.map((r) => r.id === id ? { ...r, done: !r.done } : r);
+      const rock = state.rocks.find((r) => r.id === id);
+      save({ ...state, rocks: newRocks, activity: [{ ts: new Date().toISOString(), type: "task", text: `Rock ${!rock?.done ? "completed" : "reopened"}: ${rock?.text}` }, ...state.activity].slice(0, 50) });
+    };
+    const addRock = () => {
+      if (!newRockText.trim()) return;
+      const rock = { id: Date.now(), text: newRockText.trim(), domain: "finance", due: "2026-03-31", done: false };
+      save({ ...state, rocks: [...state.rocks, rock] });
+      setNewRockText("");
+    };
+    const active = state.rocks.filter((r) => !r.done).sort((a, b) => new Date(a.due) - new Date(b.due));
+    const completed = state.rocks.filter((r) => r.done);
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <Panel title="◆ 90-DAY ROCKS" titleColor={C.gold} right={`Q1 2026 · ${daysLeft} days left`}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+            <span style={{ ...S.mono, fontSize: 14, color: C.t }}>{done}/{total} rocks done</span>
+            <span style={{ ...S.mono, fontSize: 14, color: pctColor(pct) }}>{pct}%</span>
+          </div>
+          <Bar pct={pct} color={pctColor(pct)} />
+        </Panel>
+        <Panel title="ACTIVE ROCKS" right={`${active.length} remaining`}>
+          {active.map((r) => {
+            const dLeft = Math.ceil((new Date(r.due) - new Date()) / 86400000);
+            const overdue = dLeft < 0;
+            return (
+              <div key={r.id} onClick={() => toggleRock(r.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: `1px solid ${C.b}`, cursor: "pointer", ...(overdue ? { animation: "gPulseRed 3s ease-in-out infinite", borderRadius: 4, padding: "10px 8px", margin: "2px 0" } : {}) }}>
+                <div style={{ width: 20, height: 20, borderRadius: 4, border: `2px solid ${C.glow}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: C.t }}>{r.text}</div>
+                  <span style={{ ...S.exo, fontSize: 9, color: DOMAIN_COLORS[r.domain] || C.t3, letterSpacing: 1, textTransform: "uppercase" }}>{domainLabel(r.domain)}</span>
+                </div>
+                {overdue ? (
+                  <span style={{ ...S.badge, background: "rgba(255,23,68,.15)", color: C.red, animation: "pulse 1s infinite" }}>{Math.abs(dLeft)}d OVERDUE</span>
+                ) : dLeft <= 7 ? (
+                  <span style={{ ...S.mono, fontSize: 12, color: C.orange }}>{dLeft}d</span>
+                ) : (
+                  <span style={{ ...S.mono, fontSize: 12, color: C.t3 }}>{dLeft}d</span>
+                )}
+              </div>
+            );
+          })}
+        </Panel>
+        {completed.length > 0 && (
+          <div style={S.pnl}>
+            <div style={S.scanline} />
+            <div style={{ ...S.ph, cursor: "pointer" }} onClick={() => setShowDone(!showDone)}>
+              <span style={S.pt}>{showDone ? "▼" : "▶"} COMPLETED ({completed.length})</span>
+            </div>
+            {showDone && <div style={S.pb}>
+              {completed.map((r) => (
+                <div key={r.id} onClick={() => toggleRock(r.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${C.b}`, cursor: "pointer", opacity: 0.5 }}>
+                  <div style={{ width: 20, height: 20, borderRadius: 4, background: `${C.green}22`, border: `2px solid ${C.green}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: C.green, fontSize: 12 }}>✓</div>
+                  <span style={{ fontSize: 14, color: C.t3, textDecoration: "line-through" }}>{r.text}</span>
+                </div>
+              ))}
+            </div>}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 8 }}>
+          <input value={newRockText} onChange={(e) => setNewRockText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addRock()} placeholder="+ Add new rock..." style={{ flex: 1, background: "rgba(0,170,255,.04)", border: `1px solid ${C.b2}`, borderRadius: 6, padding: "10px 14px", color: C.t, fontFamily: "'Rajdhani', sans-serif", fontSize: 14, outline: "none" }} />
+          <button onClick={addRock} style={S.hbtn}>ADD ROCK</button>
+        </div>
+      </div>
+    );
+  };
+  const GizmoView = () => {
+    const [sysOpen, setSysOpen] = useState({ agents: true, cron: true, telegram: true, log: false, learnings: false, decisions: false });
+    const toggle = (k) => setSysOpen({ ...sysOpen, [k]: !sysOpen[k] });
+    const askGizmo = async () => {
+      setGizmoState("thinking");
+      setGizmoResponse(null);
+      try {
+        const resp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-api-key": "YOUR_API_KEY", "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-5-20250929",
+            max_tokens: 2048,
+            messages: [{ role: "user", content: `You are Gizmo, Stephen's AI executive assistant. ADHD-aware: clear, concise, action-first. No lectures. No fluff.\n\nAnalyze this life state and respond as JSON with these keys:\n- focusToday: array of max 3 {text, domain, action}\n- risks: array of {text, domain, severity}\n- lifeBalance: object with domain keys and attention scores 0-10\n- wins: array of {text, domain}\n- staleItems: array of {text, source, daysStale}\n- suggestion: {text, domain, steps: []}\n\nCurrent state:\n${JSON.stringify(state, null, 2)}` }],
+          }),
+        });
+        const data = await resp.json();
+        const text = data.content?.[0]?.text || "{}";
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) setGizmoResponse(JSON.parse(jsonMatch[0]));
+      } catch (e) {
+        setGizmoResponse({ error: "Failed to reach Gizmo AI. Check API key." });
+      }
+      setGizmoState("online");
+    };
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <Panel title="⚙ ASK GIZMO" titleColor={C.gold}>
+          <div style={{ textAlign: "center", padding: "10px 0" }}>
+            <GizmoAvatar state={gizmoState} size={80} />
+            <div style={{ marginTop: 10 }}>
+              <button onClick={askGizmo} style={{ ...S.hbtn, padding: "10px 28px", fontSize: 14, letterSpacing: 2 }}>ASK GIZMO</button>
+            </div>
+          </div>
+          {gizmoResponse?.error && <div style={{ color: C.red, textAlign: "center", marginTop: 10, fontSize: 13 }}>{gizmoResponse.error}</div>}
+          {gizmoResponse && !gizmoResponse.error && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 16 }}>
+              {gizmoResponse.focusToday && (
+                <div style={S.scard}>
+                  <div style={{ ...S.exo, fontSize: 10, color: C.gold, letterSpacing: 2, marginBottom: 8 }}>⚡ FOCUS TODAY</div>
+                  {gizmoResponse.focusToday.map((f, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
+                      <span style={{ ...S.exo, fontSize: 16, fontWeight: 800, color: C.gold, opacity: 0.5 }}>{i + 1}</span>
+                      <span style={{ fontSize: 13, color: C.t }}>{f.text}</span>
+                      <span style={{ ...S.badge, background: `${DOMAIN_COLORS[f.domain] || C.t3}22`, color: DOMAIN_COLORS[f.domain] || C.t3, fontSize: 8, marginLeft: "auto" }}>{f.domain}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {gizmoResponse.risks?.length > 0 && (
+                <div style={S.scard}>
+                  <div style={{ ...S.exo, fontSize: 10, color: C.red, letterSpacing: 2, marginBottom: 8 }}>⚠ RISKS & WARNINGS</div>
+                  {gizmoResponse.risks.map((r, i) => (
+                    <div key={i} style={{ fontSize: 13, color: C.t2, padding: "3px 0" }}>· {r.text}</div>
+                  ))}
+                </div>
+              )}
+              {gizmoResponse.wins?.length > 0 && (
+                <div style={S.scard}>
+                  <div style={{ ...S.exo, fontSize: 10, color: C.green, letterSpacing: 2, marginBottom: 8 }}>★ WINS</div>
+                  {gizmoResponse.wins.map((w, i) => (
+                    <div key={i} style={{ fontSize: 13, color: C.t2, padding: "3px 0" }}>✓ {w.text}</div>
+                  ))}
+                </div>
+              )}
+              {gizmoResponse.suggestion && (
+                <div style={S.scard}>
+                  <div style={{ ...S.exo, fontSize: 10, color: C.cyan, letterSpacing: 2, marginBottom: 8 }}>≡ SUGGESTION</div>
+                  <div style={{ fontSize: 13, color: C.t }}>{gizmoResponse.suggestion.text}</div>
+                </div>
+              )}
+            </div>
+          )}
+        </Panel>
+        <Panel title="⊕ CAPTURE & INBOX" right={state.inbox.length ? `${state.inbox.length} untriaged` : "✓ clear"}>
+          <div style={{ display: "flex", gap: 8, marginBottom: state.inbox.length ? 12 : 0 }}>
+            <input value={newInboxText} onChange={(e) => setNewInboxText(e.target.value)} onKeyDown={(e) => {
+              if (e.key === "Enter" && newInboxText.trim()) {
+                const item = { id: Date.now(), text: newInboxText.trim(), ts: new Date().toISOString(), domain: null };
+                save({ ...state, inbox: [item, ...state.inbox] });
+                setNewInboxText("");
+              }
+            }} placeholder="Capture anything..." style={{ flex: 1, background: "rgba(0,170,255,.04)", border: `1px solid ${C.b2}`, borderRadius: 6, padding: "9px 14px", color: C.t, fontFamily: "'Rajdhani', sans-serif", fontSize: 14, outline: "none" }} />
+            <button onClick={() => {
+              if (!newInboxText.trim()) return;
+              const item = { id: Date.now(), text: newInboxText.trim(), ts: new Date().toISOString(), domain: null };
+              save({ ...state, inbox: [item, ...state.inbox] });
+              setNewInboxText("");
+            }} style={{ ...S.hbtn, padding: "9px 16px" }}>+</button>
+          </div>
+          {state.inbox.map((item) => (
+            <div key={item.id} style={{ padding: "8px 0", borderBottom: `1px solid ${C.b}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 5 }}>
+                <span style={{ fontSize: 13, color: C.t }}>{item.text}</span>
+                <button onClick={() => save({ ...state, inbox: state.inbox.filter((i) => i.id !== item.id) })} style={{ background: "none", border: "none", color: C.t3, cursor: "pointer", fontSize: 13, padding: "0 4px" }}>✕</button>
+              </div>
+              <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+                {Object.keys(DOMAIN_COLORS).slice(0, 9).map((d) => (
+                  <button key={d} onClick={() => {
+                    const newTask = { id: Date.now(), title: item.text, status: "queued", priority: "medium", effort: "", domain: d };
+                    save({ ...state, inbox: state.inbox.filter((i) => i.id !== item.id), tasks: [...state.tasks, newTask], activity: [{ ts: new Date().toISOString(), type: "task", text: `Triaged: ${item.text} → ${d}` }, ...state.activity].slice(0, 50) });
+                  }} style={{ padding: "2px 7px", background: `${DOMAIN_COLORS[d]}11`, border: `1px solid ${DOMAIN_COLORS[d]}33`, borderRadius: 3, color: DOMAIN_COLORS[d], fontFamily: "'Exo 2', sans-serif", fontSize: 8, fontWeight: 600, letterSpacing: 1, cursor: "pointer", textTransform: "uppercase" }}>{d}</button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </Panel>
+        <Panel title="⚙ SYSTEM ADMIN">
+          <div onClick={() => toggle("agents")} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 6, marginBottom: sysOpen.agents ? 10 : 0 }}>
+            <span style={{ color: C.t3, fontSize: 11 }}>{sysOpen.agents ? "▼" : "▶"}</span>
+            <span style={{ ...S.exo, fontSize: 10, color: C.glow, letterSpacing: 2 }}>AGENT REGISTRY</span>
+          </div>
+          {sysOpen.agents && state.agents.map((a, i) => (
+            <div key={i} style={{ ...S.scard, marginBottom: 6, display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: a.status === "online" ? C.green : C.red, boxShadow: `0 0 5px ${a.status === "online" ? C.green : C.red}` }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ ...S.mono, fontSize: 13, fontWeight: 700, color: C.t }}>{a.name}</div>
+                <div style={{ fontSize: 11, color: C.t3 }}>{a.model} · {a.trust} · {a.cron}</div>
+              </div>
+              <span style={{ ...S.badge, background: a.status === "online" ? `${C.green}22` : `${C.red}22`, color: a.status === "online" ? C.green : C.red }}>{a.status}</span>
+            </div>
+          ))}
+          <div onClick={() => toggle("cron")} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 6, marginTop: 14, marginBottom: sysOpen.cron ? 10 : 0 }}>
+            <span style={{ color: C.t3, fontSize: 11 }}>{sysOpen.cron ? "▼" : "▶"}</span>
+            <span style={{ ...S.exo, fontSize: 10, color: C.glow, letterSpacing: 2 }}>CRON JOB HEALTH</span>
+          </div>
+          {sysOpen.cron && Object.entries(state.cronHealth).map(([name, info]) => (
+            <div key={name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: `1px solid ${C.b}` }}>
+              <div style={{ width: 7, height: 7, borderRadius: "50%", background: info.status === "error" ? C.red : info.status === "healthy" ? C.green : C.orange, boxShadow: `0 0 4px ${info.status === "error" ? C.red : C.green}` }} />
+              <span style={{ ...S.mono, fontSize: 12, color: C.t2, minWidth: 88 }}>{name}</span>
+              <span style={{ fontSize: 11, color: C.t3 }}>{info.note || info.status}{info.errors ? ` (${info.errors} err)` : ""}</span>
+            </div>
+          ))}
+          <div onClick={() => toggle("telegram")} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 6, marginTop: 14, marginBottom: sysOpen.telegram ? 10 : 0 }}>
+            <span style={{ color: C.t3, fontSize: 11 }}>{sysOpen.telegram ? "▼" : "▶"}</span>
+            <span style={{ ...S.exo, fontSize: 10, color: C.glow, letterSpacing: 2 }}>TELEGRAM COMMANDS</span>
+          </div>
+          {sysOpen.telegram && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+              {state.telegramCommands.map((cmd, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, padding: "4px 0" }}>
+                  <span style={{ ...S.mono, fontSize: 11, color: C.cyan, minWidth: 100 }}>{cmd.cmd}</span>
+                  <span style={{ fontSize: 11, color: C.t3 }}>{cmd.desc}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div onClick={() => toggle("log")} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 6, marginTop: 14, marginBottom: sysOpen.log ? 10 : 0 }}>
+            <span style={{ color: C.t3, fontSize: 11 }}>{sysOpen.log ? "▼" : "▶"}</span>
+            <span style={{ ...S.exo, fontSize: 10, color: C.glow, letterSpacing: 2 }}>FULL ACTIVITY LOG</span>
+          </div>
+          {sysOpen.log && state.activity.map((a, i) => (
+            <div key={i} style={{ display: "flex", gap: 8, padding: "4px 0", borderBottom: `1px solid ${C.b}`, fontSize: 11 }}>
+              <span style={{ ...S.mono, color: C.t3, minWidth: 42 }}>{new Date(a.ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })}</span>
+              <span style={{ color: { task: C.cyan, alert: C.orange, system: C.blue }[a.type] || C.t3 }}>{{ task: "✦", alert: "⚠", system: "⚙" }[a.type] || "·"}</span>
+              <span style={{ color: C.t2 }}>{a.text}</span>
+            </div>
+          ))}
+          <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
+            <button onClick={() => {
+              const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a"); a.href = url; a.download = "state.json"; a.click();
+              URL.revokeObjectURL(url);
+            }} style={S.hbtn}>EXPORT STATE</button>
+            <label style={{ ...S.hbtn, display: "flex", alignItems: "center" }}>
+              IMPORT STATE
+              <input type="file" accept=".json" style={{ display: "none" }} onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                  try {
+                    const imported = JSON.parse(ev.target.result);
+                    save({ ...state, ...imported });
+                  } catch (err) { console.error("Import failed:", err); }
+                };
+                reader.readAsText(file);
+              }} />
+            </label>
+          </div>
+        </Panel>
+      </div>
+    );
+  };
+  const AgentsView = () => {
+    const mx = state.gizmo_agent;
+    const agent = state.agents.find(a => a.name === "Gizmo");
+    const isOnline = agent?.status === "online";
+    const ratingColors = { useful: C.green, noise: C.t3, missed: C.red };
+    const ratingIcons = { useful: "✓", noise: "~", missed: "✕" };
+    const handoffStatusColors = { accepted: C.green, pending: C.gold, dismissed: C.t3 };
+    const freshColors = { fresh: C.green, stale: C.orange, offline: C.red };
+
+    // Directive management
+    const addDirective = () => {
+      if (!newDirectiveText.trim()) return;
+      const d = { id: Date.now(), text: newDirectiveText.trim(), priority: "medium", active: true, domain: "wealth", created: new Date().toISOString().slice(0,10) };
+      save({ ...state, gizmo_agent: { ...mx, directives: [...mx.directives, d] } });
+      setNewDirectiveText("");
+    };
+    const toggleDirective = (id) => {
+      const dirs = mx.directives.map(d => d.id === id ? { ...d, active: !d.active } : d);
+      save({ ...state, gizmo_agent: { ...mx, directives: dirs } });
+    };
+    const removeDirective = (id) => {
+      save({ ...state, gizmo_agent: { ...mx, directives: mx.directives.filter(d => d.id !== id) } });
+    };
+
+    // Handoff management
+    const handleHandoff = (id, action) => {
+      const handoffs = mx.handoffs.map(h => h.id === id ? { ...h, status: action } : h);
+      const item = mx.handoffs.find(h => h.id === id);
+      let newState = { ...state, gizmo_agent: { ...mx, handoffs: handoffs } };
+      if (action === "accepted" && item) {
+        const newTask = { id: Date.now(), title: item.text, status: "queued", priority: item.urgency === "urgent" ? "urgent" : "high", effort: "", domain: item.domain };
+        newState = { ...newState, tasks: [...state.tasks, newTask], activity: [{ ts: new Date().toISOString(), type: "task", text: `Gizmo handoff accepted: ${item.text.slice(0,40)}...` }, ...state.activity].slice(0, 50) };
+      }
+      save(newState);
+    };
+
+    // Rate a run
+    const rateRun = (id, rating) => {
+      const runs = mx.runHistory.map(r => r.id === id ? { ...r, rating } : r);
+      save({ ...state, gizmo_agent: { ...mx, runHistory: runs } });
+    };
+
+    // Quick command
+    const sendQuickCmd = () => {
+      if (!newQuickCmd.trim()) return;
+      const cmd = { id: Date.now(), text: newQuickCmd.trim(), ts: new Date().toISOString(), status: "queued" };
+      save({ ...state, gizmo_agent: { ...mx, quickCommands: [...mx.quickCommands, cmd] }, activity: [{ ts: new Date().toISOString(), type: "system", text: `Quick cmd to Gizmo: ${cmd.text.slice(0,40)}` }, ...state.activity].slice(0, 50) });
+      setNewQuickCmd("");
+    };
+
+    // Scorecard calculations
+    const sc = mx.scorecard;
+    const hitRate = sc.hitRate;
+    const hitColor = hitRate >= 80 ? C.green : hitRate >= 60 ? C.gold : C.red;
+    const recentWeek = sc.weeklyRatings[sc.weeklyRatings.length - 1];
+
+    // Token calculations
+    const tk = mx.tokenUsage;
+    const dailyPct = Math.round((tk.todayUsed / tk.dailyBudget) * 100);
+    const runwayColor = tk.runway.daysRemaining <= 1 ? C.red : tk.runway.daysRemaining <= 3 ? C.orange : C.green;
+
+    const pendingHandoffs = mx.handoffs.filter(h => h.status === "pending");
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {/* AGENT HEADER */}
+        <div style={S.pnl}>
+          <div style={S.scanline} />
+          <div style={S.ph}>
+            <span style={{ ...S.pt, color: C.cyan, fontSize: 12 }}>◎ GIZMO — AGENT COMMAND</span>
+            <span style={{ ...S.exo, fontSize: 10, color: C.t3, letterSpacing: 1 }}>{agent?.model} · {agent?.trust} · {agent?.cron}</span>
+          </div>
+          <div style={{ ...S.pb, display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 14, height: 14, borderRadius: "50%", background: isOnline ? C.green : C.red, boxShadow: `0 0 8px ${isOnline ? C.green : C.red}`, animation: "pulse 2s infinite" }} />
+              <span style={{ ...S.exo, fontSize: 16, fontWeight: 800, color: isOnline ? C.green : C.red, letterSpacing: 3 }}>{isOnline ? "ONLINE" : "ERROR"}</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, flex: 1 }}>
+              {[
+                ["Hit Rate", hitRate + "%", hitColor],
+                ["Today Runs", mx.runHistory.filter(r => r.ts.startsWith("2026-03-05")).length + "/3", C.cyan],
+                ["Pending", pendingHandoffs.length, pendingHandoffs.length > 0 ? C.gold : C.green],
+                ["Directives", mx.directives.filter(d => d.active).length + " active", C.blue],
+                ["Runway", tk.runway.daysRemaining.toFixed(1) + "d", runwayColor],
+              ].map(([l, v, c]) => (
+                <div key={l} style={{ background: "rgba(0,170,255,.04)", borderRadius: 4, padding: "8px 6px", textAlign: "center" }}>
+                  <div style={{ ...S.mono, fontSize: 16, fontWeight: 700, color: c }}>{v}</div>
+                  <div style={{ ...S.exo, fontSize: 8, color: C.t3, letterSpacing: 1.5, textTransform: "uppercase", marginTop: 2 }}>{l}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* QUICK COMMAND BAR */}
+        <div style={{ ...S.scard, display: "flex", gap: 8, alignItems: "center", padding: "10px 14px" }}>
+          <span style={{ ...S.exo, fontSize: 10, color: C.cyan, letterSpacing: 2, flexShrink: 0 }}>⚡ QUICK CMD</span>
+          <input value={newQuickCmd} onChange={e => setNewQuickCmd(e.target.value)} onKeyDown={e => e.key === "Enter" && sendQuickCmd()} placeholder='e.g. "Ignore ASTS this week" or "Run extra ONDS check now"' style={{ flex: 1, background: "rgba(0,170,255,.04)", border: `1px solid ${C.b}`, borderRadius: 4, padding: "8px 12px", color: C.t, fontFamily: "'Rajdhani', sans-serif", fontSize: 13, outline: "none" }} />
+          <button onClick={sendQuickCmd} style={{ ...S.hbtn, padding: "8px 16px" }}>SEND</button>
+        </div>
+
+        {/* GIZMO SAYS + SCORECARD ROW */}
+        <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 12 }}>
+          {/* GIZMO SAYS — HANDOFFS */}
+          <Panel title="⚡ GIZMO SAYS" titleColor={C.gold} right={`${pendingHandoffs.length} pending`}>
+            {mx.handoffs.map(h => {
+              const sc = handoffStatusColors[h.status] || C.t3;
+              return (
+                <div key={h.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 0", borderBottom: `1px solid ${C.b}` }}>
+                  <div style={{ width: 3, height: 36, borderRadius: 2, background: PC[h.urgency] || C.t3, flexShrink: 0, marginTop: 2 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.t, lineHeight: 1.4 }}>{h.text}</div>
+                    <div style={{ display: "flex", gap: 8, marginTop: 4, alignItems: "center" }}>
+                      <span style={{ ...S.exo, fontSize: 8, color: DOMAIN_COLORS[h.domain] || C.t3, letterSpacing: 1, textTransform: "uppercase" }}>{h.domain}</span>
+                      <span style={{ ...S.mono, fontSize: 9, color: C.t3 }}>{new Date(h.ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })}</span>
+                    </div>
+                  </div>
+                  {h.status === "pending" ? (
+                    <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                      <button onClick={() => handleHandoff(h.id, "accepted")} style={{ ...S.hbtn, padding: "4px 10px", fontSize: 10, color: C.green, borderColor: `${C.green}44` }}>ACCEPT</button>
+                      <button onClick={() => handleHandoff(h.id, "dismissed")} style={{ ...S.hbtn, padding: "4px 10px", fontSize: 10, color: C.t3, borderColor: C.b }}>DISMISS</button>
+                    </div>
+                  ) : (
+                    <span style={{ ...S.badge, background: `${sc}22`, color: sc, fontSize: 9 }}>{h.status}</span>
+                  )}
+                </div>
+              );
+            })}
+          </Panel>
+
+          {/* AGENT SCORECARD */}
+          <Panel title="◎ SCORECARD" right={`${sc.allTimeTotal} runs tracked`}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
+              <div style={{ position: "relative", width: 80, height: 80 }}>
+                <svg width="80" height="80" viewBox="0 0 80 80">
+                  <circle cx="40" cy="40" r="34" fill="none" stroke="rgba(0,170,255,.1)" strokeWidth="6" />
+                  <circle cx="40" cy="40" r="34" fill="none" stroke={hitColor} strokeWidth="6" strokeLinecap="round" strokeDasharray={`${hitRate * 2.136} 213.6`} transform="rotate(-90 40 40)" style={{ filter: `drop-shadow(0 0 4px ${hitColor})` }} />
+                </svg>
+                <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ ...S.mono, fontSize: 18, fontWeight: 800, color: hitColor }}>{hitRate}%</span>
+                </div>
+              </div>
+              <div>
+                <div style={{ ...S.exo, fontSize: 10, color: C.t3, letterSpacing: 2, marginBottom: 4 }}>HIT RATE</div>
+                <div style={{ fontSize: 12, color: C.t2, lineHeight: 1.5 }}>
+                  {sc.allTimeUseful} useful · {sc.allTimeNoise} noise · {sc.allTimeMissed} missed
+                </div>
+                <div style={{ ...S.badge, background: sc.trend === "improving" ? `${C.green}22` : sc.trend === "declining" ? `${C.red}22` : `${C.gold}22`, color: sc.trend === "improving" ? C.green : sc.trend === "declining" ? C.red : C.gold, marginTop: 4 }}>
+                  {sc.trend === "improving" ? "▲" : sc.trend === "declining" ? "▼" : "—"} {sc.trend}
+                </div>
+              </div>
+            </div>
+            <div style={S.lbl}>WEEKLY TREND</div>
+            {sc.weeklyRatings.map((w, i) => {
+              const wr = w.total ? Math.round((w.useful / w.total) * 100) : 0;
+              return (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <span style={{ ...S.mono, fontSize: 11, color: C.t3, minWidth: 48 }}>{w.week}</span>
+                  <div style={{ flex: 1, height: 14, background: "rgba(0,0,0,.3)", borderRadius: 3, overflow: "hidden", display: "flex" }}>
+                    <div style={{ width: `${(w.useful / w.total) * 100}%`, height: "100%", background: C.green, opacity: 0.75 }} />
+                    <div style={{ width: `${(w.noise / w.total) * 100}%`, height: "100%", background: C.t3, opacity: 0.4 }} />
+                    <div style={{ width: `${(w.missed / w.total) * 100}%`, height: "100%", background: C.red, opacity: 0.75 }} />
+                  </div>
+                  <span style={{ ...S.mono, fontSize: 11, color: pctColor(wr), minWidth: 32 }}>{wr}%</span>
+                </div>
+              );
+            })}
+          </Panel>
+        </div>
+
+        {/* DIRECTIVE QUEUE */}
+        <Panel title="📋 STANDING ORDERS" titleColor={C.blue} right={`${mx.directives.filter(d => d.active).length} active · ${mx.directives.filter(d => !d.active).length} paused`}>
+          {mx.directives.map(d => (
+            <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${C.b}`, opacity: d.active ? 1 : 0.4 }}>
+              <button onClick={() => toggleDirective(d.id)} style={{ width: 20, height: 20, borderRadius: 4, border: `2px solid ${d.active ? C.cyan : C.t3}`, background: d.active ? `${C.cyan}22` : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, color: C.cyan, fontSize: 10 }}>{d.active ? "✓" : ""}</button>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: d.active ? C.t : C.t3 }}>{d.text}</div>
+                <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
+                  <span style={{ ...S.exo, fontSize: 8, color: DOMAIN_COLORS[d.domain] || C.t3, letterSpacing: 1, textTransform: "uppercase" }}>{d.domain}</span>
+                  <span style={{ ...S.badge, background: `${PC[d.priority]}22`, color: PC[d.priority], fontSize: 8 }}>{d.priority}</span>
+                </div>
+              </div>
+              <button onClick={() => removeDirective(d.id)} style={{ background: "none", border: "none", color: C.t3, cursor: "pointer", fontSize: 13, padding: "0 4px" }}>✕</button>
+            </div>
+          ))}
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <input value={newDirectiveText} onChange={e => setNewDirectiveText(e.target.value)} onKeyDown={e => e.key === "Enter" && addDirective()} placeholder='+ Add standing order... e.g. "Alert if margin > -$35K"' style={{ flex: 1, background: "rgba(0,170,255,.04)", border: `1px solid ${C.b}`, borderRadius: 4, padding: "8px 12px", color: C.t, fontFamily: "'Rajdhani', sans-serif", fontSize: 13, outline: "none" }} />
+            <button onClick={addDirective} style={S.hbtn}>ADD</button>
+          </div>
+        </Panel>
+
+        {/* RUN HISTORY + TOKEN/DATA ROW */}
+        <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 12 }}>
+          {/* RUN HISTORY */}
+          <Panel title="◷ RUN HISTORY" right={`${mx.runHistory.length} runs`}>
+            {mx.runHistory.map(r => {
+              const failed = r.status === "failed";
+              const rc = ratingColors[r.rating] || C.t3;
+              return (
+                <div key={r.id} style={{ padding: "10px 0", borderBottom: `1px solid ${C.b}`, opacity: failed ? 0.5 : 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <span style={{ ...S.mono, fontSize: 10, color: C.t3 }}>{new Date(r.ts).toLocaleDateString("en-US", { month: "short", day: "numeric" })} {new Date(r.ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })}</span>
+                    <span style={{ ...S.badge, background: failed ? `${C.red}22` : "rgba(0,230,118,.1)", color: failed ? C.red : C.green, fontSize: 8 }}>{r.trigger}</span>
+                    {r.tokensUsed > 0 && <span style={{ ...S.mono, fontSize: 9, color: C.t3, marginLeft: "auto" }}>{r.tokensUsed.toLocaleString()} tok</span>}
+                  </div>
+                  {failed ? (
+                    <div style={{ fontSize: 12, color: C.red }}>{r.error}</div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 12, color: C.t2, lineHeight: 1.4, marginBottom: 4 }}>{r.summary}</div>
+                      {r.actions.length > 0 && (
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 4 }}>
+                          {r.actions.map((a, i) => (
+                            <span key={i} style={{ ...S.badge, background: `${C.cyan}11`, color: C.cyan, fontSize: 8 }}>{a}</span>
+                          ))}
+                        </div>
+                      )}
+                      <div style={{ display: "flex", gap: 4 }}>
+                        {["useful", "noise", "missed"].map(rating => (
+                          <button key={rating} onClick={() => rateRun(r.id, rating)} style={{ padding: "2px 8px", background: r.rating === rating ? `${ratingColors[rating]}22` : "transparent", border: `1px solid ${r.rating === rating ? ratingColors[rating] : C.b}`, borderRadius: 3, color: r.rating === rating ? ratingColors[rating] : C.t3, fontFamily: "'Exo 2', sans-serif", fontSize: 8, fontWeight: 600, letterSpacing: 1, cursor: "pointer", textTransform: "uppercase" }}>{ratingIcons[rating]} {rating}</button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </Panel>
+
+          {/* TOKEN USAGE + DATA FRESHNESS */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Panel title="⛽ TOKEN BUDGET" titleColor={runwayColor}>
+              {[
+                ["TODAY", `${tk.todayUsed.toLocaleString()} / ${tk.dailyBudget.toLocaleString()}`, dailyPct <= 80 ? C.green : dailyPct <= 95 ? C.orange : C.red, dailyPct],
+                ["THIS WEEK", tk.weekUsed.toLocaleString() + " tokens", C.cyan, null],
+                ["THIS MONTH", tk.monthUsed.toLocaleString() + " tokens", C.blue, null],
+                ["COST MTD", "$" + (tk.monthUsed * tk.costPerToken).toFixed(2) + " / $" + tk.monthlyBudgetUSD, C.gold, Math.round((tk.monthUsed * tk.costPerToken / tk.monthlyBudgetUSD) * 100)],
+              ].map(([l, v, c, pct], i) => (
+                <div key={i} style={{ marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 2 }}>
+                    <span style={{ ...S.lbl, margin: 0 }}>{l}</span>
+                    <span style={{ ...S.mono, fontSize: 12, fontWeight: 700, color: c }}>{v}</span>
+                  </div>
+                  {pct != null && <Bar pct={pct} color={c} height={3} />}
+                </div>
+              ))}
+              <div style={{ background: tk.runway.daysRemaining <= 3 ? "rgba(255,23,68,.07)" : "rgba(0,170,255,.04)", border: `1px solid ${tk.runway.daysRemaining <= 3 ? "rgba(255,23,68,.25)" : C.b2}`, borderRadius: 6, padding: 10, marginTop: 6, animation: tk.runway.daysRemaining <= 1 ? "gPulseRed 2s ease-in-out infinite" : "none" }}>
+                <div style={{ ...S.exo, fontSize: 9, color: runwayColor, letterSpacing: 2, marginBottom: 4 }}>⚠ RUNWAY</div>
+                <div style={{ ...S.mono, fontSize: 16, fontWeight: 700, color: runwayColor }}>{tk.runway.daysRemaining.toFixed(1)} days · ~{tk.runway.estimatedRuns} runs left</div>
+              </div>
+            </Panel>
+
+            <Panel title="📡 DATA FRESHNESS">
+              {Object.entries(mx.dataFreshness).map(([source, info]) => {
+                const fc = freshColors[info.status];
+                const ago = Math.round((Date.now() - new Date(info.lastSync).getTime()) / 3600000);
+                const agoText = ago < 1 ? "<1h" : ago < 24 ? ago + "h" : Math.round(ago / 24) + "d";
+                return (
+                  <div key={source} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${C.b}` }}>
+                    <div style={{ width: 7, height: 7, borderRadius: "50%", background: fc, boxShadow: `0 0 4px ${fc}` }} />
+                    <span style={{ ...S.mono, fontSize: 12, color: C.t2, flex: 1, textTransform: "capitalize" }}>{source}</span>
+                    <span style={{ ...S.mono, fontSize: 11, color: fc }}>{agoText} ago</span>
+                    <span style={{ ...S.badge, background: `${fc}22`, color: fc, fontSize: 8 }}>{info.status}</span>
+                  </div>
+                );
+              })}
+            </Panel>
+
+            <Panel title="⚙ PROMPT VERSION">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <span style={{ ...S.badge, background: `${C.purple}22`, color: C.purple, fontSize: 12, padding: "4px 12px" }}>{mx.promptVersion.current}</span>
+                <span style={{ ...S.mono, fontSize: 10, color: C.t3 }}>Updated {mx.promptVersion.lastUpdated}</span>
+              </div>
+              <div style={{ fontSize: 12, color: C.t2, lineHeight: 1.4 }}>{mx.promptVersion.changelog}</div>
+            </Panel>
+          </div>
+        </div>
+
+        {/* QUEUED QUICK COMMANDS */}
+        {mx.quickCommands.length > 0 && (
+          <Panel title="📨 QUEUED COMMANDS" right={`${mx.quickCommands.length} pending`}>
+            {mx.quickCommands.map(cmd => (
+              <div key={cmd.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${C.b}` }}>
+                <span style={{ ...S.mono, fontSize: 10, color: C.t3 }}>{new Date(cmd.ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })}</span>
+                <span style={{ fontSize: 13, color: C.t, flex: 1 }}>{cmd.text}</span>
+                <span style={{ ...S.badge, background: `${C.gold}22`, color: C.gold, fontSize: 8 }}>{cmd.status}</span>
+              </div>
+            ))}
+          </Panel>
+        )}
+      </div>
+    );
+  };
+  const FreedomView = () => {
+    const inc = state.income;
+    const fin = state.finance;
+    const r30 = inc.rolling30d;
+    const r14 = inc.rolling14d;
+    const openTotal = inc.openPositions.reduce((s, p) => s + p.premium, 0);
+    const c30 = pctColor(r30.pctOfTarget);
+    const c14 = pctColor(r14.pctOfTarget);
+    const nearDTE = inc.openPositions.reduce((m, p) => Math.min(m, p.dte), 999);
+    const dtec = nearDTE <= 7 ? C.red : nearDTE <= 14 ? C.orange : C.t2;
+    const fw = inc.flywheel;
+    const maxV = Math.max(...inc.monthly.map((m) => Math.max(m.totalCAD || 0, 0)), inc.target) * 1.18;
+    const chartH = 130;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={S.pnl}>
+          <div style={S.scanline} />
+          <div style={S.ph}>
+            <span style={{ ...S.pt, color: C.gold, fontSize: 12 }}>◈ FINANCIAL FREEDOM SCORECARD</span>
+            <span style={{ ...S.exo, fontSize: 10, color: C.t3, letterSpacing: 1 }}>TARGET: $20,000 CAD/MONTH · FX 1.40</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "210px 1fr 1fr 1fr", gap: 14, alignItems: "center", padding: 18 }}>
+            <ArcReactorMini pct={r30.pctOfTarget} size={185} />
+            <div style={{ ...S.scard, borderLeft: `3px solid ${c30}` }}>
+              <div style={S.lbl}>30-DAY ROLLING</div>
+              <div style={{ ...S.val, fontSize: 25, color: c30 }}>{fmtUSD(r30.totalCAD)} CAD</div>
+              <Bar pct={r30.pctOfTarget} color={c30} />
+              <div style={{ ...S.mono, fontSize: 10, color: C.t3, marginTop: 7 }}>Prem: {fmtUSD(r30.premiumsUSD)} · Divs: {fmtUSD(r30.dividendsUSD)}</div>
+            </div>
+            <div style={{ ...S.scard, borderLeft: `3px solid ${c14}` }}>
+              <div style={S.lbl}>2-WEEK PACE (PROJ)</div>
+              <div style={{ ...S.val, fontSize: 25, color: c14 }}>{fmtUSD(r14.projectedMonthlyCAD)} CAD</div>
+              <Bar pct={r14.pctOfTarget} color={c14} />
+              <div style={{ ...S.exo, fontSize: 9, color: c14, letterSpacing: 1.5, marginTop: 7, fontWeight: 600 }}>{r14.pctOfTarget}% OF TARGET</div>
+            </div>
+            <div style={{ ...S.scard, borderLeft: `3px solid ${C.blue}` }}>
+              <div style={S.lbl}>OPEN PREMIUM</div>
+              <div style={{ ...S.val, fontSize: 25, color: C.blue }}>{fmtUSD(openTotal)} USD</div>
+              <div style={{ marginTop: 9, display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ ...S.exo, fontSize: 9, color: C.t3, letterSpacing: 1.5 }}>{inc.openPositions.length} POSITIONS</span>
+                <span style={{ ...S.mono, fontSize: 10, color: dtec }}>NEAREST: {nearDTE}d</span>
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1.55fr 1fr", gap: 14, padding: "0 14px 14px" }}>
+            <div style={{ background: C.s2, borderRadius: 8, padding: "13px 15px", border: `1px solid ${C.b2}` }}>
+              <div style={S.lbl}>MONTHLY INCOME vs $20K TARGET</div>
+              <div style={{ position: "relative", height: chartH + 28, marginTop: 12 }}>
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: chartH }}>
+                  {inc.monthly.map((m, i) => {
+                    const neg = m.totalCAD <= 0;
+                    const bc = neg ? C.red : m.pct >= 100 ? C.green : C.gold;
+                    const h = neg ? 4 : Math.max(3, (m.totalCAD / maxV) * chartH);
+                    const dh = neg ? 0 : Math.max(0, (m.dividendsUSD * inc.fxRate / maxV) * chartH);
+                    const ph = Math.max(0, h - dh);
+                    const vs = neg ? "-" + fmtUSD(Math.abs(m.totalCAD)) : fmtUSD(m.totalCAD);
+                    return (
+                      <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", height: "100%", justifyContent: "flex-end", gap: 3 }}>
+                        <div style={{ ...S.mono, fontSize: 9, fontWeight: 700, color: bc, textAlign: "center" }}>{vs}</div>
+                        <div style={{ width: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", height: chartH - 18 }}>
+                          {!neg ? (
+                            <>
+                              {dh > 0 && <div style={{ height: dh, background: C.cyan, borderRadius: "3px 3px 0 0", opacity: 0.75 }} />}
+                              <div style={{ height: ph, background: bc, borderRadius: dh > 0 ? "0" : "3px 3px 0 0", opacity: 0.85, boxShadow: `0 0 7px ${bc}44` }} />
+                            </>
+                          ) : (
+                            <div style={{ marginTop: "auto", height: h, background: C.red, borderRadius: 3, boxShadow: `0 0 7px ${C.red}44` }} />
+                          )}
+                        </div>
+                        <div style={{ ...S.exo, fontSize: 11, fontWeight: 600, color: C.t3 }}>{m.label}{m.partial ? "*" : ""}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ position: "absolute", left: 0, right: 0, bottom: 28 + (inc.target / maxV) * chartH, borderTop: `1.5px dashed ${C.gold}`, opacity: 0.35, pointerEvents: "none" }} />
+                <div style={{ ...S.mono, position: "absolute", right: 0, bottom: 30 + (inc.target / maxV) * chartH, fontSize: 9, color: C.gold, opacity: 0.55 }}>$20K</div>
+              </div>
+            </div>
+            <div style={{ background: C.s2, borderRadius: 8, padding: "13px 15px", border: `1px solid ${C.b2}` }}>
+              <div style={S.lbl}>TOP PREMIUM EARNERS</div>
+              {[...inc.topEarners].sort((a, b) => b.net - a.net).map((e, i) => {
+                const mx = Math.max(...inc.topEarners.map((x) => Math.abs(x.net)));
+                const neg = e.net < 0;
+                const c = neg ? C.red : C.green;
+                return (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <span style={{ ...S.mono, fontSize: 12, fontWeight: 700, color: C.t2, minWidth: 42 }}>{e.ticker}</span>
+                    <div style={{ flex: 1, height: 13, background: "rgba(0,0,0,.3)", borderRadius: 3, overflow: "hidden" }}>
+                      <div style={{ width: `${(Math.abs(e.net) / mx) * 100}%`, height: "100%", background: c, opacity: 0.75, borderRadius: 3, boxShadow: `0 0 5px ${c}44` }} />
+                    </div>
+                    <span style={{ ...S.mono, fontSize: 12, color: c, minWidth: 60, textAlign: "right", fontWeight: 700 }}>{(neg ? "-" : "+") + fmtUSD(e.net)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          {[
+            { title: "▤ CRYPTO FEAR & GREED", data: state.fearGreed.crypto, context: v => v <= 25 ? "Extreme Fear" : v <= 45 ? "Fear — accumulation zone" : v <= 55 ? "Neutral" : v <= 75 ? "Greed — caution" : "Extreme Greed" },
+            { title: "▲ VIX / MARKET SENTIMENT", data: state.fearGreed.vix, isVix: true, context: v => v > 30 ? "High Fear" : v > 20 ? "Elevated — cautious" : v > 15 ? "Normal" : "Complacency" },
+          ].map(({ title, data, isVix, context }, idx) => {
+            const val = data.value;
+            const maxVal = isVix ? 50 : 100;
+            const pct = Math.min(100, (val / maxVal) * 100);
+            const gaugeColor = isVix
+              ? (val > 30 ? C.red : val > 20 ? C.orange : val > 15 ? C.gold : C.green)
+              : (val <= 25 ? C.red : val <= 45 ? C.orange : val <= 55 ? C.gold : C.green);
+            const needleAngle = -90 + (pct / 100) * 180;
+            return (
+              <Panel key={idx} title={title} right={`Updated ${data.updated}`}>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "8px 0" }}>
+                  <svg width="180" height="100" viewBox="0 0 180 100">
+                    <defs>
+                      <linearGradient id={`fg${idx}`} x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stopColor={C.red} />
+                        <stop offset="25%" stopColor={C.orange} />
+                        <stop offset="50%" stopColor={C.gold} />
+                        <stop offset="75%" stopColor={C.green} />
+                        <stop offset="100%" stopColor={C.cyan} />
+                      </linearGradient>
+                    </defs>
+                    <path d="M 15 90 A 75 75 0 0 1 165 90" fill="none" stroke="rgba(0,170,255,.1)" strokeWidth="10" strokeLinecap="round" />
+                    <path d="M 15 90 A 75 75 0 0 1 165 90" fill="none" stroke={`url(#fg${idx})`} strokeWidth="10" strokeLinecap="round" strokeDasharray={`${pct * 2.36} 236`} opacity="0.7" />
+                    <line x1="90" y1="90" x2={90 + 55 * Math.cos((needleAngle * Math.PI) / 180)} y2={90 + 55 * Math.sin((needleAngle * Math.PI) / 180)} stroke={gaugeColor} strokeWidth="2.5" strokeLinecap="round" style={{ filter: `drop-shadow(0 0 4px ${gaugeColor})` }} />
+                    <circle cx="90" cy="90" r="4" fill={gaugeColor} style={{ filter: `drop-shadow(0 0 6px ${gaugeColor})` }} />
+                  </svg>
+                  <div style={{ ...S.mono, fontSize: 28, fontWeight: 700, color: gaugeColor, marginTop: 4, textShadow: `0 0 12px ${gaugeColor}` }}>{val}</div>
+                  <div style={{ ...S.exo, fontSize: 11, fontWeight: 700, color: gaugeColor, letterSpacing: 2, textTransform: "uppercase", marginTop: 2 }}>{data.label}</div>
+                  <div style={{ fontSize: 11, color: C.t3, marginTop: 6, textAlign: "center", maxWidth: 220, lineHeight: 1.4 }}>{context(val)}</div>
+                </div>
+              </Panel>
+            );
+          })}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
+          <Panel title="☰ OPEN OPTIONS POSITIONS" right={`${inc.openPositions.length} active · ${fmtUSD(openTotal)} total`}>
+            <div style={{ display: "grid", gridTemplateColumns: "58px 68px 50px 70px 46px 36px 70px", gap: 8, padding: "7px 0", borderBottom: `1px solid ${C.b}`, marginBottom: 4 }}>
+              {["TICKER", "STRIKE", "TYPE", "EXPIRY", "DTE", "QTY", "PREMIUM"].map((h) => (
+                <span key={h} style={{ ...S.lbl, margin: 0, textAlign: h === "PREMIUM" ? "right" : "left" }}>{h}</span>
+              ))}
+            </div>
+            {[...inc.openPositions].sort((a, b) => a.dte - b.dte).map((p, i) => {
+              const dc = p.dte <= 7 ? C.red : p.dte <= 14 ? C.orange : C.t2;
+              const tc = p.type === "PUT" ? C.cyan : C.purple;
+              const tbg = p.type === "PUT" ? "rgba(0,229,255,.11)" : "rgba(224,64,251,.11)";
+              return (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "58px 68px 50px 70px 46px 36px 70px", gap: 8, padding: "7px 0", borderBottom: `1px solid ${C.b}`, fontSize: 12, alignItems: "center" }}>
+                  <span style={{ ...S.mono, fontWeight: 700, color: C.t }}>{p.ticker}</span>
+                  <span style={{ ...S.mono, color: C.t2 }}>${p.strike}</span>
+                  <span style={{ ...S.badge, background: tbg, color: tc }}>{p.type}</span>
+                  <span style={{ ...S.mono, color: C.t3, fontSize: 11 }}>{p.expiry.slice(5)}</span>
+                  <span style={{ ...S.mono, color: dc, fontWeight: 700, textShadow: p.dte <= 7 ? `0 0 7px ${C.red}` : "none" }}>{p.dte}d</span>
+                  <span style={{ ...S.mono, color: C.t3 }}>{p.qty}</span>
+                  <span style={{ ...S.mono, color: C.green, textAlign: "right", fontWeight: 700 }}>{fmtUSD(p.premium)}</span>
+                </div>
+              );
+            })}
+          </Panel>
+          <Panel title="$ PORTFOLIO VITALS">
+            {[
+              ["NET WORTH", "$" + fmtK(fin.netWorth) + " CAD", C.cyan, fin.netWorth / 1500000 * 100, "$1.5M FI TARGET"],
+              ["PORTFOLIO", "$" + fmtK(fin.portfolio) + " CAD", C.blue, null, null],
+              ["BTC", fin.btc + " / " + fin.btcTarget + " BTC", C.gold, (fin.btc / fin.btcTarget) * 100, fin.btcTarget + " BTC TARGET"],
+              ["ONDS", fin.onds + " / " + fin.ondsMax, fin.onds >= 135 ? C.red : fin.onds >= 115 ? C.orange : C.cyan, (fin.onds / fin.ondsMax) * 100, "MAX 140"],
+              ["MARGIN", "$" + fmtK(Math.abs(fin.margin)) + " / $" + fmtK(Math.abs(fin.marginMax)), Math.abs(fin.margin) >= 35000 ? C.red : Math.abs(fin.margin) >= 25000 ? C.orange : C.green, (Math.abs(fin.margin) / Math.abs(fin.marginMax)) * 100, "LIMIT $40K"],
+              ["BURN", "$" + fin.monthlyBurn.toLocaleString() + " CAD", C.t2, null, null],
+              ["SURPLUS", "+$" + fin.monthlySurplus.toLocaleString() + " CAD", C.green, null, null],
+            ].map(([label, value, color, pct, sub], i) => (
+              <div key={i} style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 2 }}>
+                  <span style={{ ...S.lbl, margin: 0 }}>{label}</span>
+                  <span style={{ ...S.val, fontSize: 13, color }}>{value}</span>
+                </div>
+                {sub && <div style={{ ...S.exo, fontSize: 9, color: C.t3, letterSpacing: 1, textAlign: "right", marginBottom: 2 }}>{sub}</div>}
+                {pct != null && <Bar pct={pct} color={color} height={3} />}
+              </div>
+            ))}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+              <span style={{ ...S.lbl, margin: 0 }}>PHASE</span>
+              <span style={{ ...S.badge, background: "rgba(224,64,251,.11)", color: C.purple }}>Phase {fin.phase} — Flywheel Active</span>
+            </div>
+          </Panel>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+          <Panel title="↻ FLYWHEEL STATUS">
+            {[["BTCI SHARES", fw.btciShares.toLocaleString(), C.gold], ["QQQI SHARES", fw.qqqiShares.toLocaleString(), C.cyan], ["DEPLOYED", fmtUSD(fw.totalDeployedUSD) + " USD", C.blue], ["DIV GROWTH", "+$" + fw.monthlyDivGrowth + "/mo", C.green]].map(([l, v, c], i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 11 }}>
+                <span style={{ ...S.lbl, margin: 0 }}>{l}</span>
+                <span style={{ ...S.val, fontSize: 15, color: c }}>{v}</span>
+              </div>
+            ))}
+            <div style={{ borderTop: `1px solid ${C.b2}`, paddingTop: 11, marginTop: 3 }}>
+              <div style={{ ...S.lbl, marginBottom: 8 }}>PROJECTION</div>
+              {[["Jun 2026", "93%", false], ["Sep 2026", "94%", false], ["Dec 2026", "95%", false], ["Mar 2027", "97%", false], ["Jun 2027", "~100% ✦", true]].map(([d, p, hi], i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: `1px solid ${C.b}`, color: hi ? C.green : C.t3, fontWeight: hi ? 700 : 400 }}>
+                  <span style={{ fontSize: 12 }}>{d}</span>
+                  <span style={{ ...S.mono, fontSize: 12, color: hi ? C.green : C.gold }}>{p}</span>
+                </div>
+              ))}
+            </div>
+          </Panel>
+          <Panel title="⚠ ALERTS" right={`${state.alerts.length} active`}>
+            {state.alerts.map((a, i) => {
+              const ac = a.level === "red" ? C.red : C.orange;
+              return (
+                <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "8px 0", borderBottom: `1px solid ${C.b}` }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: ac, boxShadow: `0 0 6px ${ac}`, flexShrink: 0, marginTop: 3, animation: a.level === "red" ? "pulse 1s infinite" : "pulse 2s infinite", display: "block" }} />
+                  <span style={{ color: C.t2, fontSize: 13, lineHeight: 1.4 }}>{a.text}</span>
+                </div>
+              );
+            })}
+          </Panel>
+          <Panel title="⚒ CRON HEALTH">
+            {Object.entries(state.cronHealth).map(([name, info]) => (
+              <div key={name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: `1px solid ${C.b}` }}>
+                <div style={{ width: 7, height: 7, borderRadius: "50%", background: info.status === "error" ? C.red : C.green, boxShadow: `0 0 4px ${info.status === "error" ? C.red : C.green}` }} />
+                <span style={{ ...S.mono, fontSize: 12, color: C.t2, minWidth: 80 }}>{name}</span>
+                <span style={{ fontSize: 11, color: C.t3 }}>{info.note}{info.errors ? ` (${info.errors})` : ""}</span>
+              </div>
+            ))}
+          </Panel>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 12 }}>
+          <Panel title="⚡ TRADING ACTIVITY" titleColor={C.cyan} right={`${state.trades.month} · Net: ${state.trades.netUSD >= 0 ? "+" : ""}${fmtUSD(state.trades.netUSD)}`}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6, marginBottom: 14 }}>
+              {[["Premiums", state.trades.premiumsCollected, C.cyan],["Winners", state.trades.closedWinners, C.green],["Losers", state.trades.closedLosers, C.red],["Day Trades", state.trades.dayTrades, C.gold],["Reinvested", state.trades.flywheelReinvested, C.purple]].map(([l, v, c]) => (
+                <div key={l} style={{ background: "rgba(0,170,255,.04)", borderRadius: 4, padding: "6px 4px", textAlign: "center" }}>
+                  <div style={{ ...S.mono, fontSize: 13, fontWeight: 700, color: c }}>{v < 0 ? "-" : v > 0 ? "+" : ""}{fmtUSD(v)}</div>
+                  <div style={{ ...S.exo, fontSize: 7, color: C.t3, letterSpacing: 1.5, textTransform: "uppercase", marginTop: 2 }}>{l}</div>
+                </div>
+              ))}
+            </div>
+            <div style={S.lbl}>RECENT TRADES</div>
+            {state.trades.recent.map((t, i) => {
+              const actionColors = { "CC BTC": C.green, "CSP STO": C.cyan, "CSP BTC": C.green, "CC STO": C.cyan, "DAY TRADE": C.gold };
+              const ac = actionColors[t.action] || C.t2;
+              return (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${C.b}` }}>
+                  <span style={{ ...S.mono, fontSize: 10, color: C.t3, minWidth: 42 }}>{t.date.slice(5)}</span>
+                  <span style={{ ...S.mono, fontSize: 12, fontWeight: 700, color: C.t, minWidth: 40 }}>{t.ticker}</span>
+                  <span style={{ ...S.badge, background: `${ac}18`, color: ac, fontSize: 8, letterSpacing: 1 }}>{t.action}</span>
+                  {t.strike && <span style={{ ...S.mono, fontSize: 10, color: C.t3 }}>${t.strike}</span>}
+                  <span style={{ marginLeft: "auto", ...S.mono, fontSize: 12, fontWeight: 700, color: t.pl != null ? (t.pl >= 0 ? C.green : C.red) : C.cyan }}>
+                    {t.pl != null ? (t.pl >= 0 ? "+" : "") + fmtUSD(t.pl) : t.premium ? fmtUSD(t.premium) + " prem" : ""}
+                  </span>
+                  {t.note && <span style={{ fontSize: 9, color: C.t3, maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.note}</span>}
+                </div>
+              );
+            })}
+          </Panel>
+          <Panel title="☰ INVESTMENT POLICY" titleColor={C.gold}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+              <span style={{ ...S.badge, background: `${C.purple}22`, color: C.purple, fontSize: 12, padding: "4px 12px" }}>Phase {state.policy.phase}</span>
+              <span style={{ ...S.exo, fontSize: 13, fontWeight: 700, color: C.t, letterSpacing: 1 }}>{state.policy.phaseName}</span>
+            </div>
+            <div style={S.lbl}>ALLOCATION TARGETS vs ACTUAL</div>
+            {Object.entries(state.policy.allocation).map(([key, { target, actual }]) => {
+              const diff = actual - target;
+              const diffColor = Math.abs(diff) <= 2 ? C.green : Math.abs(diff) <= 5 ? C.gold : C.orange;
+              const labels = { wheel: "Wheel", yieldETFs: "Yield ETFs", coreIndex: "Core Index", btc: "BTC", oly: "OLY", cash: "Cash" };
+              return (
+                <div key={key} style={{ marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 3 }}>
+                    <span style={{ ...S.exo, fontSize: 10, color: C.t2, letterSpacing: 1, fontWeight: 600 }}>{labels[key] || key}</span>
+                    <span style={{ ...S.mono, fontSize: 10, color: diffColor }}>{actual}% / {target}% <span style={{ fontSize: 9, opacity: 0.7 }}>({diff > 0 ? "+" : ""}{diff})</span></span>
+                  </div>
+                  <div style={{ position: "relative", height: 6, background: "rgba(0,170,255,.08)", borderRadius: 3, overflow: "hidden" }}>
+                    <div style={{ position: "absolute", height: "100%", width: `${actual}%`, background: diffColor, borderRadius: 3, opacity: 0.7, transition: "width .6s" }} />
+                    <div style={{ position: "absolute", height: "100%", width: 2, left: `${target}%`, background: C.t, opacity: 0.5, borderRadius: 1 }} />
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, padding: "8px 0", borderTop: `1px solid ${C.b}` }}>
+              <span style={{ ...S.lbl, margin: 0 }}>NEXT REVIEW</span>
+              <span style={{ ...S.mono, fontSize: 12, color: C.cyan }}>{state.policy.nextReview}</span>
+            </div>
+            <div style={{ background: "rgba(255,234,0,.04)", border: "1px solid rgba(255,234,0,.18)", borderRadius: 6, padding: 11, marginTop: 10 }}>
+              <div style={{ fontSize: 13, color: C.gold, fontWeight: 600, lineHeight: 1.5, textAlign: "center", fontStyle: "italic" }}>“{state.policy.anchor}”</div>
+            </div>
+          </Panel>
+        </div>
+      </div>
+    );
+  };
+  const CommandPalette = () => {
+    if (!cmdOpen) return null;
+    const actions = [
+      { label: "Capture idea", action: () => {
+        const text = cmdQuery.replace(/^capture\s*/i, "").trim();
+        if (text) {
+          const item = { id: Date.now(), text, ts: new Date().toISOString(), domain: null };
+          save({ ...state, inbox: [item, ...state.inbox] });
+        }
+        setCmdOpen(false); setCmdQuery("");
+      }},
+      { label: "Log energy", action: () => { setTab("today"); setCmdOpen(false); } },
+      { label: "View rocks", action: () => { setTab("rocks"); setCmdOpen(false); } },
+      { label: "Ask Gizmo", action: () => { setTab("gizmo"); setCmdOpen(false); } },
+      { label: "Financial Freedom", action: () => { setTab("freedom"); setCmdOpen(false); } },
+      { label: "View inbox (" + state.inbox.length + ")", action: () => { setTab("gizmo"); setCmdOpen(false); } },
+      { label: "Export state", action: () => { const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "state.json"; a.click(); setCmdOpen(false); } },
+    ];
+    const filtered = cmdQuery ? actions.filter((a) => a.label.toLowerCase().includes(cmdQuery.toLowerCase())) : actions;
+    return (
+      <div onClick={() => setCmdOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(2,10,20,.85)", zIndex: 1000, display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: 120 }}>
+        <div onClick={(e) => e.stopPropagation()} style={{ width: 420, background: C.s1, border: `1px solid ${C.b2}`, borderRadius: 10, overflow: "hidden", boxShadow: "0 0 40px rgba(0,170,255,.15)" }}>
+          <div style={{ padding: "14px 16px", borderBottom: `1px solid ${C.b2}` }}>
+            <input autoFocus value={cmdQuery} onChange={(e) => setCmdQuery(e.target.value)} placeholder="Type a command..." style={{ width: "100%", background: "transparent", border: "none", color: C.t, fontFamily: "'Rajdhani', sans-serif", fontSize: 16, outline: "none" }} />
+          </div>
+          <div style={{ maxHeight: 300, overflowY: "auto" }}>
+            {filtered.map((a, i) => (
+              <div key={i} onClick={a.action} style={{ padding: "10px 16px", cursor: "pointer", borderBottom: `1px solid ${C.b}`, color: C.t2, fontSize: 14, transition: "all .1s" }} onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(0,170,255,.08)"; e.currentTarget.style.color = C.glow; }} onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = C.t2; }}>
+                ⚡ {a.label}
+              </div>
+            ))}
+          </div>
+          <div style={{ padding: "6px 16px", borderTop: `1px solid ${C.b}`, fontSize: 10, color: C.t3 }}>⌘K to toggle · ESC to close</div>
+        </div>
+      </div>
+    );
+  };
+  const renderView = () => {
+    switch (tab) {
+      case "dashboard": return <DashboardView />;
+      case "today": return <TodayView />;
+      case "freedom": return <FreedomView />;
+      case "rocks": return <RocksView />;
+      case "agents": return <AgentsView />;
+      case "gizmo": return <GizmoView />;
+      default: return <DashboardView />;
+    }
+  };
+  return (
+    <div style={S.root}>
+      <style>{css}</style>
+      <div style={S.scanOverlay} />
+      <div style={S.content}>
+        <Header />
+        <NavBar />
+        {renderView()}
+        <div style={{ textAlign: "center", padding: 10, borderTop: `1px solid ${C.b2}`, position: "relative", zIndex: 1 }}>
+          <span style={{ ...S.exo, fontSize: 9, color: C.t3, letterSpacing: 2 }}>GIZMO v4.0 ◆ COMMAND CENTRE ◆ PHASE 1</span>
+        </div>
+      </div>
+      <CommandPalette />
+      <button onClick={() => { setCmdOpen(true); setCmdQuery(""); }} style={{ position: "fixed", bottom: 20, right: 20, width: 44, height: 44, borderRadius: "50%", background: C.s1, border: `1px solid ${C.b2}`, color: C.glow, fontSize: 18, cursor: "pointer", boxShadow: "0 0 16px rgba(0,170,255,.2)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center" }}>⚡</button>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(GizmoCommandCentre));
+</script>
+</body>
+</html>
