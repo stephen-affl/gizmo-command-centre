@@ -1,31 +1,32 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
-<title>Gizmo Command Centre</title>
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#020a14">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: #020a14; overflow-x: hidden; }
-  ::-webkit-scrollbar { width: 6px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: rgba(0,170,255,0.2); border-radius: 3px; }
-</style>
-<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Gizmo Command Centre</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#020a14" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700;900&family=Fira+Code:wght@400;500;700&display=swap" rel="stylesheet"/>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #020a14; overflow-x: hidden; font-family: 'Exo 2', sans-serif; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(0,170,255,.2); border-radius: 3px; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    @keyframes scanline { 0% { top: -2px; } 100% { top: 100%; } }
+    @keyframes glow { 0%,100% { text-shadow: 0 0 8px rgba(0,170,255,.6); } 50% { text-shadow: 0 0 20px rgba(0,170,255,.9); } }
+  </style>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body>
-<div id="root"></div>
-<script type="text/babel" data-presets="react">
+  <div id="root"></div>
+  <script type="text/babel">
 const { useState, useEffect, useCallback, useRef } = React;
-
-// React hooks from global React
 // ═══════════════════════════════════════════════════════════════
 // GIZMO COMMAND CENTRE v8 — Live Data Dashboard
 // Design basis: v7 JARVIS HUD + live market data from state.json
@@ -538,14 +539,44 @@ function GizmoCommandCentre() {
   const safeIncome = state.income || {};
   const safeOpenPositions = Array.isArray(safeIncome.openPositions) ? safeIncome.openPositions : [];
   const safeTopEarners = Array.isArray(safeIncome.topEarners) ? safeIncome.topEarners : [];
-  const safeCronHealth = Array.isArray(state.cronHealth) ? state.cronHealth : [];
+  const safeCronHealth = (state.cronHealth && typeof state.cronHealth === "object" && !Array.isArray(state.cronHealth)) ? state.cronHealth : {};
+
+  // ── NORMALIZE GIZMO DATA ──────────────────────────────────
+  // Adapts Gizmo's live state.json shape to what the dashboard expects
+  const normalizeGizmoData = (data) => {
+    const d = { ...data };
+    // alerts: Gizmo sends {critical:[], warnings:[{id,msg,level}]} → dashboard expects [{text,level}]
+    if (d.alerts && !Array.isArray(d.alerts) && typeof d.alerts === "object") {
+      const arr = [];
+      (Array.isArray(d.alerts.critical) ? d.alerts.critical : []).forEach(a => arr.push({ text: a.msg || a.text || a, level: "red" }));
+      (Array.isArray(d.alerts.warnings) ? d.alerts.warnings : []).forEach(a => arr.push({ text: a.msg || a.text || a, level: a.level === "yellow" ? "orange" : a.level || "orange" }));
+      d.alerts = arr;
+    }
+    // cronHealth: Gizmo sends flat {status,lastFixed,issue,totalJobs,...} → dashboard expects {jobName:{status,note,errors}}
+    if (d.cronHealth && typeof d.cronHealth === "object" && !Array.isArray(d.cronHealth) && d.cronHealth.totalJobs !== undefined) {
+      // It's a flat summary, convert to dict format
+      const ch = {};
+      ch["Overall"] = { status: d.cronHealth.status || "unknown", note: d.cronHealth.note || "", errors: d.cronHealth.failingJobs || 0 };
+      if (d.cronHealth.issue) ch["Issue"] = { status: "error", note: String(d.cronHealth.issue) };
+      d.cronHealth = ch;
+    }
+    // income.topEarners: ensure it's an array
+    if (d.income && d.income.topEarners && !Array.isArray(d.income.topEarners)) {
+      d.income = { ...d.income, topEarners: [] };
+    }
+    // income.flywheel: ensure it exists as an object
+    if (d.income && !d.income.flywheel) {
+      d.income = { ...d.income, flywheel: {} };
+    }
+    return d;
+  };
 
   // ── LIVE DATA POLLING (v8) ────────────────────────────────
   const fetchLiveState = useCallback(async () => {
     try {
       const resp = await fetch(STATE_URL + "?t=" + Date.now(), { cache: "no-store" });
       if (resp.ok) {
-        const data = await resp.json();
+        const data = normalizeGizmoData(await resp.json());
         // Merge server state into local state
         setState(prev => {
           // Deep merge: preserve nested objects from DEFAULT_STATE when live data overwrites top-level keys
@@ -605,7 +636,7 @@ function GizmoCommandCentre() {
         if (window.storage) {
           const saved = await window.storage.get(STORAGE_KEY);
           if (saved) {
-            const parsed = JSON.parse(saved);
+            const parsed = normalizeGizmoData(JSON.parse(saved));
             const merged = { ...DEFAULT_STATE, ...parsed };
             if (!merged.gizmo_agent || !merged.gizmo_agent.scorecard) merged.gizmo_agent = { ...DEFAULT_STATE.gizmo_agent, ...(parsed.gizmo_agent || {}) };
             if (!merged.gizmo_agent.tokenUsage) merged.gizmo_agent.tokenUsage = DEFAULT_STATE.gizmo_agent.tokenUsage;
@@ -1216,11 +1247,11 @@ function GizmoCommandCentre() {
             <span style={{ color: C.t3, fontSize: 11 }}>{sysOpen.cron ? "▼" : "▶"}</span>
             <span style={{ ...S.exo, fontSize: 10, color: C.glow, letterSpacing: 2 }}>CRON JOB HEALTH</span>
           </div>
-          {sysOpen.cron && Object.entries(state.cronHealth).map(([name, info]) => (
+          {sysOpen.cron && Object.entries(safeCronHealth).filter(([, v]) => v && typeof v === "object").map(([name, info]) => (
             <div key={name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: `1px solid ${C.b}` }}>
-              <div style={{ width: 7, height: 7, borderRadius: "50%", background: info.status === "error" ? C.red : info.status === "healthy" ? C.green : C.orange, boxShadow: `0 0 4px ${info.status === "error" ? C.red : C.green}` }} />
+              <div style={{ width: 7, height: 7, borderRadius: "50%", background: (info.status||"") === "error" ? C.red : (info.status||"") === "healthy" ? C.green : C.orange, boxShadow: `0 0 4px ${(info.status||"") === "error" ? C.red : C.green}` }} />
               <span style={{ ...S.mono, fontSize: 12, color: C.t2, minWidth: 88 }}>{name}</span>
-              <span style={{ fontSize: 11, color: C.t3 }}>{info.note || info.status}{info.errors ? ` (${info.errors} err)` : ""}</span>
+              <span style={{ fontSize: 11, color: C.t3 }}>{info.note || info.status || ""}{info.errors ? ` (${info.errors} err)` : ""}</span>
             </div>
           ))}
           <div onClick={() => toggle("telegram")} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 6, marginTop: 14, marginBottom: sysOpen.telegram ? 10 : 0 }}>
@@ -1694,13 +1725,13 @@ function GizmoCommandCentre() {
           </Panel>
           <Panel title="$ PORTFOLIO VITALS">
             {[
-              ["NET WORTH", "$" + fmtK(fin.netWorth) + " CAD", C.cyan, fin.netWorth / 1500000 * 100, "$1.5M FI TARGET"],
-              ["PORTFOLIO", "$" + fmtK(fin.portfolio) + " CAD", C.blue, null, null],
-              ["BTC", fin.btc + " / " + fin.btcTarget + " BTC", C.gold, (fin.btc / fin.btcTarget) * 100, fin.btcTarget + " BTC TARGET"],
-              ["ONDS", fin.onds + " / " + fin.ondsMax, fin.onds >= 135 ? C.red : fin.onds >= 115 ? C.orange : C.cyan, (fin.onds / fin.ondsMax) * 100, "MAX 140"],
-              ["MARGIN", "$" + fmtK(Math.abs(fin.margin)) + " / $" + fmtK(Math.abs(fin.marginMax)), Math.abs(fin.margin) >= 35000 ? C.red : Math.abs(fin.margin) >= 25000 ? C.orange : C.green, (Math.abs(fin.margin) / Math.abs(fin.marginMax)) * 100, "LIMIT $40K"],
-              ["BURN", "$" + fin.monthlyBurn.toLocaleString() + " CAD", C.t2, null, null],
-              ["SURPLUS", "+$" + fin.monthlySurplus.toLocaleString() + " CAD", C.green, null, null],
+              ["NET WORTH", "$" + fmtK(fin.netWorth||0) + " CAD", C.cyan, (fin.netWorth||0) / 1500000 * 100, "$1.5M FI TARGET"],
+              ["PORTFOLIO", "$" + fmtK(fin.portfolio||0) + " CAD", C.blue, null, null],
+              ["BTC", (fin.btc||0) + " / " + (fin.btcTarget||1) + " BTC", C.gold, ((fin.btc||0) / (fin.btcTarget||1)) * 100, (fin.btcTarget||1) + " BTC TARGET"],
+              ["ONDS", (fin.onds||0) + " / " + (fin.ondsMax||140), (fin.onds||0) >= 135 ? C.red : (fin.onds||0) >= 115 ? C.orange : C.cyan, ((fin.onds||0) / (fin.ondsMax||140)) * 100, "MAX 140"],
+              ["MARGIN", "$" + fmtK(Math.abs(fin.margin||0)) + " / $" + fmtK(Math.abs(fin.marginMax||40000)), Math.abs(fin.margin||0) >= 35000 ? C.red : Math.abs(fin.margin||0) >= 25000 ? C.orange : C.green, (Math.abs(fin.margin||0) / Math.abs(fin.marginMax||40000)) * 100, "LIMIT $40K"],
+              ["BURN", "$" + (fin.monthlyBurn||0).toLocaleString() + " CAD", C.t2, null, null],
+              ["SURPLUS", "+$" + (fin.monthlySurplus||0).toLocaleString() + " CAD", C.green, null, null],
             ].map(([label, value, color, pct, sub], i) => (
               <div key={i} style={{ marginBottom: 12 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 2 }}>
@@ -1747,11 +1778,11 @@ function GizmoCommandCentre() {
             })}
           </Panel>
           <Panel title="⚒ CRON HEALTH">
-            {Object.entries(state.cronHealth).map(([name, info]) => (
+            {Object.entries(safeCronHealth).filter(([, v]) => v && typeof v === "object").map(([name, info]) => (
               <div key={name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: `1px solid ${C.b}` }}>
-                <div style={{ width: 7, height: 7, borderRadius: "50%", background: info.status === "error" ? C.red : C.green, boxShadow: `0 0 4px ${info.status === "error" ? C.red : C.green}` }} />
+                <div style={{ width: 7, height: 7, borderRadius: "50%", background: (info.status||"") === "error" ? C.red : C.green, boxShadow: `0 0 4px ${(info.status||"") === "error" ? C.red : C.green}` }} />
                 <span style={{ ...S.mono, fontSize: 12, color: C.t2, minWidth: 80 }}>{name}</span>
-                <span style={{ fontSize: 11, color: C.t3 }}>{info.note}{info.errors ? ` (${info.errors})` : ""}</span>
+                <span style={{ fontSize: 11, color: C.t3 }}>{info.note || ""}{info.errors ? ` (${info.errors})` : ""}</span>
               </div>
             ))}
           </Panel>
@@ -1887,8 +1918,14 @@ function GizmoCommandCentre() {
 }
 
 
-// ── MOUNT
-ReactDOM.createRoot(document.getElementById('root')).render(<GizmoCommandCentre />);
-</script>
+// Mount
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<GizmoCommandCentre />);
+  </script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js').catch(() => {});
+    }
+  </script>
 </body>
 </html>
