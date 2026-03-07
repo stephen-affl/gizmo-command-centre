@@ -548,7 +548,15 @@ function GizmoCommandCentre() {
         const data = await resp.json();
         // Merge server state into local state
         setState(prev => {
-          const merged = { ...prev, ...data };
+          // Deep merge: preserve nested objects from DEFAULT_STATE when live data overwrites top-level keys
+          const merged = { ...prev };
+          for (const key of Object.keys(data)) {
+            if (data[key] && typeof data[key] === "object" && !Array.isArray(data[key]) && prev[key] && typeof prev[key] === "object" && !Array.isArray(prev[key])) {
+              merged[key] = { ...prev[key], ...data[key] };
+            } else {
+              merged[key] = data[key];
+            }
+          }
           if (data.gizmo_agent) merged.gizmo_agent = { ...prev.gizmo_agent, ...data.gizmo_agent };
           return merged;
         });
@@ -1879,7 +1887,7 @@ function GizmoCommandCentre() {
 }
 
 
-// ── MOUNT ─────────────────────────────────────────────────
+// ── MOUNT
 ReactDOM.createRoot(document.getElementById('root')).render(<GizmoCommandCentre />);
 </script>
 </body>
