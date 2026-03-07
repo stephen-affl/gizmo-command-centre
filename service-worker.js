@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gizmo-v1';
+const CACHE_NAME = 'gizmo-v8';
 const STATIC_ASSETS = [
   './',
   './index.html',
@@ -6,7 +6,7 @@ const STATIC_ASSETS = [
   'https://unpkg.com/react@18/umd/react.production.min.js',
   'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
   'https://unpkg.com/@babel/standalone/babel.min.js',
-  'https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Exo+2:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap'
+  'https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700&family=Share+Tech+Mono&display=swap'
 ];
 
 self.addEventListener('install', event => {
@@ -36,7 +36,21 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Cache-first for everything else
+  // Network-first for index.html (so updates deploy immediately)
+  if (event.request.url.endsWith('/') || event.request.url.includes('index.html')) {
+    event.respondWith(
+      fetch(event.request).then(response => {
+        if (response && response.status === 200) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        }
+        return response;
+      }).catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Cache-first for static assets (CDN libs, fonts)
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;
