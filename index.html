@@ -705,9 +705,10 @@ function GizmoCommandCentre() {
             if (key === "tasks" && Array.isArray(data.tasks)) {
               const localUserTasks = (Array.isArray(prev.tasks) ? prev.tasks : []).filter(t => t.type !== "gizmo");
               const serverGizmoTasks = data.tasks.filter(t => t.type === "gizmo");
-              // Also grab any server tasks that don't exist locally (new tasks from Gizmo inbox)
+              // Only add server tasks that don't already exist locally (match by ID OR by title+domain to prevent dupes)
               const localIds = new Set(localUserTasks.map(t => t.id));
-              const newServerTasks = data.tasks.filter(t => t.type !== "gizmo" && !localIds.has(t.id));
+              const localTitles = new Set(localUserTasks.map(t => (t.title || "").toLowerCase().trim()));
+              const newServerTasks = data.tasks.filter(t => t.type !== "gizmo" && !localIds.has(t.id) && !localTitles.has((t.title || "").toLowerCase().trim()));
               merged.tasks = [...localUserTasks, ...newServerTasks, ...serverGizmoTasks];
               continue;
             }
@@ -718,6 +719,8 @@ function GizmoCommandCentre() {
             }
           }
           if (data.gizmo_agent) merged.gizmo_agent = { ...prev.gizmo_agent, ...data.gizmo_agent };
+          // Persist merged state to localStorage so user changes survive refresh
+          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(merged)); } catch (e) {}
           return merged;
         });
         // Extract liveMarket data
@@ -812,11 +815,7 @@ function GizmoCommandCentre() {
     (async () => {
       try {
         let saved = null;
-        if (window.storage) {
-          saved = await window.storage.get(STORAGE_KEY);
-        } else if (typeof localStorage !== "undefined") {
-          saved = localStorage.getItem(STORAGE_KEY);
-        }
+        saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
           const parsed = normalizeGizmoData(JSON.parse(saved));
           const merged = { ...DEFAULT_STATE, ...parsed };
@@ -833,11 +832,8 @@ function GizmoCommandCentre() {
   }, []);
   const save = useCallback((newState) => {
     setState(newState);
-    // Save to localStorage immediately (no debounce — prevents data loss from poll overwrites)
-    try {
-      if (window.storage) window.storage.set(STORAGE_KEY, JSON.stringify(newState));
-      else if (typeof localStorage !== "undefined") localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-    } catch (e) { console.log("Storage save error:", e); }
+    // Save to localStorage immediately (no debounce)
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(newState)); } catch (e) { console.warn("LS save error:", e); }
     // Debounce push to server
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
