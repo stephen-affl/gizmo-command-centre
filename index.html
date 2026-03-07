@@ -833,13 +833,15 @@ function GizmoCommandCentre() {
   }, []);
   const save = useCallback((newState) => {
     setState(newState);
+    // Save to localStorage immediately (no debounce — prevents data loss from poll overwrites)
+    try {
+      if (window.storage) window.storage.set(STORAGE_KEY, JSON.stringify(newState));
+      else if (typeof localStorage !== "undefined") localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+    } catch (e) { console.log("Storage save error:", e); }
+    // Debounce push to server
     clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
-      try {
-        if (window.storage) await window.storage.set(STORAGE_KEY, JSON.stringify(newState));
-        else if (typeof localStorage !== "undefined") localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
-        pushStateToGizmo(newState); // Push changes back to Gizmo server
-      } catch (e) { console.log("Storage save error:", e); }
+    saveTimer.current = setTimeout(() => {
+      pushStateToGizmo(newState);
     }, 500);
   }, [pushStateToGizmo]);
   useEffect(() => {
