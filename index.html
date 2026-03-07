@@ -883,7 +883,7 @@ function GizmoCommandCentre() {
             <div style={{ ...S.val, fontSize: 28, color: c30 }}>{fmtUSD(r30.totalCAD)} CAD</div>
             <Bar pct={r30.pctOfTarget} color={c30} />
             <div style={{ display: "flex", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
-              {[["NW", "$" + fmtK(fin.netWorth), C.cyan], ["ONDS", `${fin.onds}/${fin.ondsMax}`, fin.onds >= 135 ? C.red : fin.onds >= 115 ? C.orange : C.cyan], ["BTC", `${fin.btc}`, C.gold], ["SURPLUS", `+$${fin.monthlySurplus.toLocaleString()}`, C.green]].map(([l, v, c]) => (
+              {[["NW", "$" + fmtK(fin.netWorth||0), C.cyan], ["ONDS", `${fin.onds||0}/${fin.ondsMax||140}`, (fin.onds||0) >= 135 ? C.red : (fin.onds||0) >= 115 ? C.orange : C.cyan], ["BTC", `${fin.btc||0}`, C.gold], ["SURPLUS", `+$${(fin.monthlySurplus||0).toLocaleString()}`, C.green]].map(([l, v, c]) => (
                 <div key={l}>
                   <div style={{ ...S.exo, fontSize: 8, color: C.t3, letterSpacing: 2 }}>{l}</div>
                   <div style={{ ...S.mono, fontSize: 14, fontWeight: 700, color: c }}>{v}</div>
@@ -1561,17 +1561,19 @@ function GizmoCommandCentre() {
     );
   };
   const FreedomView = () => {
-    const inc = state.income;
-    const fin = state.finance;
-    const r30 = inc.rolling30d;
-    const r14 = inc.rolling14d;
-    const openTotal = (Array.isArray(inc.openPositions) ? inc.openPositions : []).reduce((s, p) => s + p.premium, 0);
+    const inc = state.income || {};
+    const fin = state.finance || {};
+    const r30 = inc.rolling30d || {};
+    const r14 = inc.rolling14d || {};
+    const safeOpenPos = Array.isArray(inc.openPositions) ? inc.openPositions : [];
+    const openTotal = safeOpenPos.reduce((s, p) => s + p.premium, 0);
     const c30 = pctColor(r30.pctOfTarget);
     const c14 = pctColor(r14.pctOfTarget);
-    const nearDTE = (Array.isArray(inc.openPositions) ? inc.openPositions : []).reduce((m, p) => Math.min(m, p.dte), 999);
+    const nearDTE = safeOpenPos.reduce((m, p) => Math.min(m, p.dte), 999);
     const dtec = nearDTE <= 7 ? C.red : nearDTE <= 14 ? C.orange : C.t2;
-    const fw = inc.flywheel;
-    const maxV = Math.max(...inc.monthly.map((m) => Math.max(m.totalCAD || 0, 0)), inc.target) * 1.18;
+    const fw = inc.flywheel || {};
+    const safeMonthly = Array.isArray(inc.monthly) ? inc.monthly : [];
+    const maxV = Math.max(...safeMonthly.map((m) => Math.max(m.totalCAD || 0, 0)), inc.target || 20000) * 1.18;
     const chartH = 130;
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -1609,7 +1611,7 @@ function GizmoCommandCentre() {
               <div style={S.lbl}>MONTHLY INCOME vs $20K TARGET</div>
               <div style={{ position: "relative", height: chartH + 28, marginTop: 12 }}>
                 <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: chartH }}>
-                  {inc.monthly.map((m, i) => {
+                  {safeMonthly.map((m, i) => {
                     const neg = m.totalCAD <= 0;
                     const bc = neg ? C.red : m.pct >= 100 ? C.green : C.gold;
                     const h = neg ? 4 : Math.max(3, (m.totalCAD / maxV) * chartH);
@@ -1709,7 +1711,7 @@ function GizmoCommandCentre() {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
           <Panel title="↻ FLYWHEEL STATUS">
-            {[["BTCI SHARES", fw.btciShares.toLocaleString(), C.gold], ["QQQI SHARES", fw.qqqiShares.toLocaleString(), C.cyan], ["DEPLOYED", fmtUSD(fw.totalDeployedUSD) + " USD", C.blue], ["DIV GROWTH", "+$" + fw.monthlyDivGrowth + "/mo", C.green]].map(([l, v, c], i) => (
+            {[["BTCI SHARES", (fw.btciShares || 0).toLocaleString(), C.gold], ["QQQI SHARES", (fw.qqqiShares || 0).toLocaleString(), C.cyan], ["DEPLOYED", fmtUSD(fw.totalDeployedUSD || 0) + " USD", C.blue], ["DIV GROWTH", "+$" + (fw.monthlyDivGrowth || 0) + "/mo", C.green]].map(([l, v, c], i) => (
               <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 11 }}>
                 <span style={{ ...S.lbl, margin: 0 }}>{l}</span>
                 <span style={{ ...S.val, fontSize: 15, color: c }}>{v}</span>
@@ -1747,9 +1749,9 @@ function GizmoCommandCentre() {
           </Panel>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 12 }}>
-          <Panel title="⚡ TRADING ACTIVITY" titleColor={C.cyan} right={`${state.trades.month} · Net: ${state.trades.netUSD >= 0 ? "+" : ""}${fmtUSD(state.trades.netUSD)}`}>
+          <Panel title="⚡ TRADING ACTIVITY" titleColor={C.cyan} right={`${(state.trades||{}).month||"—"} · Net: ${(state.trades||{}).netUSD >= 0 ? "+" : ""}${fmtUSD((state.trades||{}).netUSD||0)}`}>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6, marginBottom: 14 }}>
-              {[["Premiums", state.trades.premiumsCollected, C.cyan],["Winners", state.trades.closedWinners, C.green],["Losers", state.trades.closedLosers, C.red],["Day Trades", state.trades.dayTrades, C.gold],["Reinvested", state.trades.flywheelReinvested, C.purple]].map(([l, v, c]) => (
+              {[["Premiums", (state.trades||{}).premiumsCollected||0, C.cyan],["Winners", (state.trades||{}).closedWinners||0, C.green],["Losers", (state.trades||{}).closedLosers||0, C.red],["Day Trades", (state.trades||{}).dayTrades||0, C.gold],["Reinvested", (state.trades||{}).flywheelReinvested||0, C.purple]].map(([l, v, c]) => (
                 <div key={l} style={{ background: "rgba(0,170,255,.04)", borderRadius: 4, padding: "6px 4px", textAlign: "center" }}>
                   <div style={{ ...S.mono, fontSize: 13, fontWeight: 700, color: c }}>{v < 0 ? "-" : v > 0 ? "+" : ""}{fmtUSD(v)}</div>
                   <div style={{ ...S.exo, fontSize: 7, color: C.t3, letterSpacing: 1.5, textTransform: "uppercase", marginTop: 2 }}>{l}</div>
@@ -1757,7 +1759,7 @@ function GizmoCommandCentre() {
               ))}
             </div>
             <div style={S.lbl}>RECENT TRADES</div>
-            {state.trades.recent.map((t, i) => {
+            {(Array.isArray((state.trades||{}).recent) ? state.trades.recent : []).map((t, i) => {
               const actionColors = { "CC BTC": C.green, "CSP STO": C.cyan, "CSP BTC": C.green, "CC STO": C.cyan, "DAY TRADE": C.gold };
               const ac = actionColors[t.action] || C.t2;
               return (
