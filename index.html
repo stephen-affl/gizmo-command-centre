@@ -701,6 +701,16 @@ function GizmoCommandCentre() {
           // Deep merge: preserve nested objects from DEFAULT_STATE when live data overwrites top-level keys
           const merged = { ...prev };
           for (const key of Object.keys(data)) {
+            // SMART TASK MERGE: Gizmo only writes type:"gizmo" tasks; preserve user's local tasks
+            if (key === "tasks" && Array.isArray(data.tasks)) {
+              const localUserTasks = (Array.isArray(prev.tasks) ? prev.tasks : []).filter(t => t.type !== "gizmo");
+              const serverGizmoTasks = data.tasks.filter(t => t.type === "gizmo");
+              // Also grab any server tasks that don't exist locally (new tasks from Gizmo inbox)
+              const localIds = new Set(localUserTasks.map(t => t.id));
+              const newServerTasks = data.tasks.filter(t => t.type !== "gizmo" && !localIds.has(t.id));
+              merged.tasks = [...localUserTasks, ...newServerTasks, ...serverGizmoTasks];
+              continue;
+            }
             if (data[key] && typeof data[key] === "object" && !Array.isArray(data[key]) && prev[key] && typeof prev[key] === "object" && !Array.isArray(prev[key])) {
               merged[key] = { ...prev[key], ...data[key] };
             } else {
@@ -801,19 +811,22 @@ function GizmoCommandCentre() {
   useEffect(() => {
     (async () => {
       try {
+        let saved = null;
         if (window.storage) {
-          const saved = await window.storage.get(STORAGE_KEY);
-          if (saved) {
-            const parsed = normalizeGizmoData(JSON.parse(saved));
-            const merged = { ...DEFAULT_STATE, ...parsed };
-            if (!merged.gizmo_agent || !merged.gizmo_agent.scorecard) merged.gizmo_agent = { ...DEFAULT_STATE.gizmo_agent, ...(parsed.gizmo_agent || {}) };
-            if (!merged.gizmo_agent.tokenUsage) merged.gizmo_agent.tokenUsage = DEFAULT_STATE.gizmo_agent.tokenUsage;
-            if (!merged.gizmo_agent.dataFreshness) merged.gizmo_agent.dataFreshness = DEFAULT_STATE.gizmo_agent.dataFreshness;
-            if (!merged.gizmo_agent.promptVersion) merged.gizmo_agent.promptVersion = DEFAULT_STATE.gizmo_agent.promptVersion;
-            if (!merged.gizmo_agent.scorecard) merged.gizmo_agent.scorecard = DEFAULT_STATE.gizmo_agent.scorecard;
-            if (!merged.gizmo_agent.runway) merged.gizmo_agent.tokenUsage.runway = DEFAULT_STATE.gizmo_agent.tokenUsage.runway;
-            setState(merged);
-          }
+          saved = await window.storage.get(STORAGE_KEY);
+        } else if (typeof localStorage !== "undefined") {
+          saved = localStorage.getItem(STORAGE_KEY);
+        }
+        if (saved) {
+          const parsed = normalizeGizmoData(JSON.parse(saved));
+          const merged = { ...DEFAULT_STATE, ...parsed };
+          if (!merged.gizmo_agent || !merged.gizmo_agent.scorecard) merged.gizmo_agent = { ...DEFAULT_STATE.gizmo_agent, ...(parsed.gizmo_agent || {}) };
+          if (!merged.gizmo_agent.tokenUsage) merged.gizmo_agent.tokenUsage = DEFAULT_STATE.gizmo_agent.tokenUsage;
+          if (!merged.gizmo_agent.dataFreshness) merged.gizmo_agent.dataFreshness = DEFAULT_STATE.gizmo_agent.dataFreshness;
+          if (!merged.gizmo_agent.promptVersion) merged.gizmo_agent.promptVersion = DEFAULT_STATE.gizmo_agent.promptVersion;
+          if (!merged.gizmo_agent.scorecard) merged.gizmo_agent.scorecard = DEFAULT_STATE.gizmo_agent.scorecard;
+          if (!merged.gizmo_agent.runway) merged.gizmo_agent.tokenUsage.runway = DEFAULT_STATE.gizmo_agent.tokenUsage.runway;
+          setState(merged);
         }
       } catch (e) { console.log("Storage load error:", e); }
     })();
@@ -824,6 +837,7 @@ function GizmoCommandCentre() {
     saveTimer.current = setTimeout(async () => {
       try {
         if (window.storage) await window.storage.set(STORAGE_KEY, JSON.stringify(newState));
+        else if (typeof localStorage !== "undefined") localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
         pushStateToGizmo(newState); // Push changes back to Gizmo server
       } catch (e) { console.log("Storage save error:", e); }
     }, 500);
