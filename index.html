@@ -1,204 +1,39 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#020a14" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Gizmo Command Centre</title>
-  <link rel="manifest" href="manifest.json" />
-  <style>
-    html, body { margin: 0; padding: 0; background: #020a14; overflow-x: hidden; }
-    #sync-banner { 
-      position: fixed; bottom: 0; left: 0; right: 0; z-index: 9999;
-      background: rgba(5,21,37,0.95); border-top: 1px solid rgba(0,170,255,0.15);
-      padding: 4px 12px; display: flex; justify-content: center; align-items: center;
-      font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #5a9ab5;
-    }
-    #sync-banner .dot { width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; }
-    #sync-banner .dot.fresh { background: #00e676; box-shadow: 0 0 4px #00e676; }
-    #sync-banner .dot.stale { background: #ff9100; box-shadow: 0 0 4px #ff9100; }
-    #sync-banner .dot.offline { background: #ff1744; box-shadow: 0 0 4px #ff1744; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Gizmo Command Centre</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#020a14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #020a14; overflow-x: hidden; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(0,170,255,0.2); border-radius: 3px; }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@400;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body>
-  <div id="root"></div>
-  <div id="sync-banner">
-    <span class="dot offline" id="sync-dot"></span>
-    <span id="sync-text">Connecting...</span>
-  </div>
-
-  <!-- React 18 from CDN -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <!-- Babel for JSX transpilation -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-  <script type="text/babel">
-// ══════════════════════════════════════════════════════════════
-// CONFIGURATION — v4.3 | Claude Co-Work + Gizmo collab
-// ══════════════════════════════════════════════════════════════
-const STATE_SERVER_URL = "http://192.168.1.76:3141/state.json"; // Gizmo's local server (home WiFi)
-const ONEDRIVE_STATE_URL = ""; // Fallback: OneDrive shared link (outside home WiFi)
-const SYNC_INTERVAL_MS = 60000; // Auto-fetch every 60 seconds
-const CACHE_BUST_VERSION = "4.3"; // Bump to clear stale localStorage
-const FEAR_GREED_API = "https://api.alternative.me/fng/?limit=1";
-const FEAR_GREED_REFRESH_MS = 300000; // Every 5 minutes
-
-// ══════════════════════════════════════════════════════════════
-// Cache Bust — clears stale localStorage when version changes
-// ══════════════════════════════════════════════════════════════
-(function cacheBust() {
-  const stored = localStorage.getItem("gizmo_cache_version");
-  if (stored !== CACHE_BUST_VERSION) {
-    console.log("[Gizmo] Cache bust: " + stored + " → " + CACHE_BUST_VERSION);
-    localStorage.removeItem("gizmo_state");
-    localStorage.setItem("gizmo_cache_version", CACHE_BUST_VERSION);
-  }
-})();
-
-// ══════════════════════════════════════════════════════════════
-// Market Hours Awareness — Feature 8
-// ══════════════════════════════════════════════════════════════
-function getMarketState() {
-  const now = new Date();
-  const mt = new Date(now.toLocaleString("en-US", { timeZone: "America/Edmonton" }));
-  const h = mt.getHours(), m = mt.getMinutes(), day = mt.getDay();
-  if (day === 0 || day === 6) return "weekend";
-  if (h < 5) return "closed";
-  if (h < 7 || (h === 7 && m < 30)) return "premarket";
-  if (h < 14) return "open";
-  if (h < 16) return "afterhours";
-  return "closed";
-}
-
-function getMarketBadge() {
-  const s = getMarketState();
-  return { weekend: { text: "WEEKEND", color: "#7c4dff" }, premarket: { text: "PRE-MARKET", color: "#ffab00" }, open: { text: "MARKET OPEN", color: "#00e676" }, afterhours: { text: "AFTER HOURS", color: "#ff9100" }, closed: { text: "CLOSED", color: "#546e7a" } }[s];
-}
-
-// ══════════════════════════════════════════════════════════════
-// Live Fear & Greed API — Feature 2
-// ══════════════════════════════════════════════════════════════
-let liveFearGreed = null;
-
-async function fetchFearGreed() {
-  try {
-    const resp = await fetch(FEAR_GREED_API);
-    if (resp.ok) {
-      const d = await resp.json();
-      const entry = d.data && d.data[0];
-      if (entry) {
-        liveFearGreed = {
-          value: parseInt(entry.value),
-          label: entry.value_classification,
-          updated: new Date(parseInt(entry.timestamp) * 1000).toISOString().slice(0, 10),
-        };
-        console.log("[Gizmo] Fear & Greed updated:", liveFearGreed.value, liveFearGreed.label);
-        if (window.__gizmoSyncCallback) window.__gizmoSyncCallback();
-      }
-    }
-  } catch (e) {
-    console.log("[Gizmo] Fear & Greed fetch failed:", e.message);
-  }
-}
-
-// Fetch immediately and then every 5 minutes
-fetchFearGreed();
-setInterval(fetchFearGreed, FEAR_GREED_REFRESH_MS);
-
-// ══════════════════════════════════════════════════════════════
-// State Sync Engine — tries local server first, falls back to OneDrive
-// ══════════════════════════════════════════════════════════════
-let lastSyncTime = null;
-let syncStatus = "offline";
-
-function updateSyncBanner() {
-  const dot = document.getElementById("sync-dot");
-  const text = document.getElementById("sync-text");
-  if (!dot || !text) return;
-
-  dot.className = "dot " + syncStatus;
-  if (syncStatus === "fresh") {
-    const ago = lastSyncTime ? Math.round((Date.now() - lastSyncTime) / 1000) : 0;
-    text.textContent = ago < 60 ? "Synced " + ago + "s ago" : "Synced " + Math.round(ago/60) + "m ago";
-  } else if (syncStatus === "stale") {
-    text.textContent = "Sync delayed — using cached data";
-  } else {
-    const hasSource = STATE_SERVER_URL || ONEDRIVE_STATE_URL;
-    text.textContent = hasSource ? "Connecting..." : "No sync URL configured — using local data";
-  }
-}
-
-// Update the banner every 10 seconds
-setInterval(updateSyncBanner, 10000);
-
-// Global sync function that the React app can call
-window.__gizmoSyncCallback = null;
-
-async function fetchRemoteState() {
-  // Try local server first (home WiFi)
-  if (STATE_SERVER_URL) {
-    try {
-      const resp = await fetch(STATE_SERVER_URL + "?t=" + Date.now(), { cache: "no-store" });
-      if (resp.ok) {
-        const data = await resp.json();
-        lastSyncTime = Date.now();
-        syncStatus = "fresh";
-        updateSyncBanner();
-        return data;
-      }
-    } catch (e) {
-      console.log("[Gizmo] Local server unreachable, trying OneDrive...");
-    }
-  }
-  // Fallback to OneDrive
-  if (ONEDRIVE_STATE_URL) {
-    try {
-      const resp = await fetch(ONEDRIVE_STATE_URL + "?t=" + Date.now(), { cache: "no-store" });
-      if (resp.ok) {
-        const data = await resp.json();
-        lastSyncTime = Date.now();
-        syncStatus = "fresh";
-        updateSyncBanner();
-        return data;
-      }
-    } catch (e) {
-      console.log("[Gizmo] OneDrive sync also failed:", e.message);
-    }
-  }
-  syncStatus = lastSyncTime ? "stale" : "offline";
-  updateSyncBanner();
-  return null;
-}
-
-// Auto-fetch loop
-setInterval(async () => {
-  const remote = await fetchRemoteState();
-  if (remote && window.__gizmoSyncCallback) {
-    window.__gizmoSyncCallback(remote);
-  }
-}, SYNC_INTERVAL_MS);
-
-// Initial fetch
-setTimeout(async () => {
-  const remote = await fetchRemoteState();
-  if (remote && window.__gizmoSyncCallback) {
-    window.__gizmoSyncCallback(remote);
-  }
-}, 2000);
-
-// ══════════════════════════════════════════════════════════════
-// GIZMO COMMAND CENTRE
-// ══════════════════════════════════════════════════════════════
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
 const { useState, useEffect, useCallback, useRef } = React;
+
+// React hooks from global React
 // ═══════════════════════════════════════════════════════════════
-// GIZMO COMMAND CENTRE v4 — Phase 1
-// Design basis: gizmo-artifact-49be0151.html (JARVIS HUD)
-// Layout: Gizmo 3-column operations + domain grid
+// GIZMO COMMAND CENTRE v8 — Live Data Dashboard
+// Design basis: v7 JARVIS HUD + live market data from state.json
+// New: Market Pulse Bar, Live Price Tiles, Watchlist, Data Freshness
 // ═══════════════════════════════════════════════════════════════
-const STORAGE_KEY = "gizmo-command-centre-v4";
+const STORAGE_KEY = "gizmo-command-centre-v8";
+const STATE_URL = "http://127.0.0.1:3141/state.json";
+const POLL_INTERVAL = 30000; // 30s polling
 // ── COLOR SYSTEM ────────────────────────────────────────────
 const C = {
   bg: "#020a14", s1: "#051525", s2: "#0a1a2a",
@@ -248,8 +83,8 @@ const DEFAULT_STATE = {
       { ticker: "ONDS", net: 1675 }, { ticker: "TSLA", net: 1511 }, { ticker: "IBRX", net: 956 },
       { ticker: "IREN", net: 467 }, { ticker: "ASTS", net: -2358 },
     ],
-    flywheel: { btciShares: 1621.5, qqqiShares: 1012.1, totalDeployedUSD: 117069, monthlyDivGrowth: 56, projectedTargetDate: "2027-06" },
-    updatedAt: "2026-03-06T21:45:00-07:00", dataSource: "Wealthsimple CSV export 2026-03-06",
+    flywheel: { btciShares: 1587.5, qqqiShares: 1012.1, totalDeployedUSD: 115937, monthlyDivGrowth: 56, projectedTargetDate: "2027-06" },
+    updatedAt: "2026-03-05T21:45:00-07:00", dataSource: "Wealthsimple CSV export 2026-03-05",
   },
   finance: { netWorth: 1134644, portfolio: 618000, onds: 115, ondsMax: 140, btc: 1.3, btcTarget: 6.15, margin: -25000, marginMax: -40000, phase: 1, monthlyBurn: 16450, monthlySurplus: 2900, updated: "2026-03-05" },
   fearGreed: {
@@ -285,26 +120,27 @@ const DEFAULT_STATE = {
     { id: 8, title: "Pair OpenClaw node", status: "queued", priority: "medium", effort: "1 cycle", domain: "infrastructure" },
   ],
   alerts: [
-    { level: "yellow", text: "ONDS at 115/140 (watch at 135)", ts: "2026-03-06T21:00:00" },
-    { level: "green", text: "Gizmo online — Sonnet active, all crons green", ts: "2026-03-06T22:00:00" },
-    { level: "yellow", text: "Mar net $3,361 — premiums captured $2,269", ts: "2026-03-06T21:30:00" },
+    { level: "yellow", text: "ONDS at 115/140 (watch at 135)", ts: "2026-03-05T21:00:00" },
+    { level: "yellow", text: "30-day income at 92% of $20K target", ts: "2026-03-05T21:00:00" },
+    { level: "red", text: "All 11 cron jobs failing — Anthropic credits depleted", ts: "2026-03-05T20:00:00" },
+    { level: "yellow", text: "Mar showing negative — rolls in progress", ts: "2026-03-05T21:30:00" },
   ],
   cronHealth: {
-    marketOpen: { status: "ok", errors: 0, note: "Delivered via Telegram" },
-    midday: { status: "ok", errors: 0, note: "Delivered via Telegram" },
-    eod: { status: "ok", errors: 0, note: "Delivered via Telegram" },
-    apex: { status: "ok", errors: 0, note: "Running on Sonnet" },
-    gizmo_agent: { status: "ok", errors: 0, note: "Online — Sonnet active" },
+    marketOpen: { status: "error", errors: 3, note: "Message delivery failed" },
+    midday: { status: "error", errors: 4, note: "Message delivery failed" },
+    eod: { status: "error", errors: 3, note: "Delivery failed" },
+    apex: { status: "error", errors: 4, note: "Anthropic credits depleted" },
+    gizmo_agent: { status: "error", errors: 1, note: "Anthropic credits depleted" },
   },
   agents: [
     { name: "Gizmo", status: "online", model: "claude-sonnet", trust: "L3", cron: "*/5 * * * *", channel: "telegram" },
-    { name: "Gizmo", status: "online", model: "claude-sonnet", trust: "L2", cron: "0 9,12,17 * * *", channel: "telegram" },
-    { name: "Apex", status: "online", model: "claude-sonnet", trust: "L2", cron: "0 9,16 * * 1-5", channel: "telegram" },
+    { name: "Gizmo", status: "error", model: "claude-sonnet", trust: "L2", cron: "0 9,12,17 * * *", channel: "telegram" },
+    { name: "Apex", status: "error", model: "claude-sonnet", trust: "L2", cron: "0 9,16 * * 1-5", channel: "telegram" },
   ],
   activity: [
     { ts: "2026-03-05T21:45:00", type: "task", text: "Wealthsimple CSV export → done" },
     { ts: "2026-03-05T21:30:00", type: "alert", text: "Mar income negative — rolls in progress" },
-    { ts: "2026-03-06T22:00:00", type: "system", text: "Gizmo online — Sonnet active, all crons green" },
+    { ts: "2026-03-05T20:00:00", type: "system", text: "All cron jobs failing — credits depleted" },
     { ts: "2026-03-05T19:30:00", type: "task", text: "Command Centre finalize → in_progress" },
     { ts: "2026-03-05T18:00:00", type: "system", text: "State export completed" },
     { ts: "2026-03-05T17:00:00", type: "alert", text: "ONDS approaching watch level (115/140)" },
@@ -340,7 +176,7 @@ const DEFAULT_STATE = {
     runHistory: [
       { id: 1, ts: "2026-03-05T09:00:00", trigger: "cron-9am", status: "delivered", summary: "Morning briefing: ONDS at 115, 3 positions expiring within 8 DTE, BTC holding steady", actions: ["Flagged MU CC at 52% capture", "Reminded Amex auto-pay"], rating: "useful", tokensUsed: 1842 },
       { id: 2, ts: "2026-03-05T12:00:00", trigger: "cron-12pm", status: "delivered", summary: "Midday check: IBRX CC hit 80% capture target, MSTZ day trade opportunity flagged", actions: ["Suggested IBRX close", "MSTZ momentum alert"], rating: "useful", tokensUsed: 1560 },
-      { id: 3, ts: "2026-03-05T17:00:00", trigger: "cron-5pm", status: "delivered", summary: "EOD: Portfolio steady, 2 positions in close zone, flywheel reinvested $564", actions: ["Close zone alerts sent", "Flywheel update"], rating: "useful", tokensUsed: 1680 },
+      { id: 3, ts: "2026-03-05T17:00:00", trigger: "cron-5pm", status: "failed", summary: null, actions: [], rating: null, tokensUsed: 0, error: "Anthropic credits depleted" },
       { id: 4, ts: "2026-03-04T09:00:00", trigger: "cron-9am", status: "delivered", summary: "Morning briefing: Feb closed at 127% target, Mar starting negative due to rolls", actions: ["Feb win celebration", "Roll strategy reminder"], rating: "useful", tokensUsed: 2105 },
       { id: 5, ts: "2026-03-04T12:00:00", trigger: "cron-12pm", status: "delivered", summary: "Midday: No urgent actions. All positions within parameters.", actions: [], rating: "noise", tokensUsed: 980 },
       { id: 6, ts: "2026-03-04T17:00:00", trigger: "cron-5pm", status: "delivered", summary: "EOD wrap: 2 positions closed green, flywheel reinvested $564 into BTCI/QQQI", actions: ["Flywheel deposit confirmed", "Tomorrow watchlist: MU, ONDS"], rating: "useful", tokensUsed: 1720 },
@@ -500,28 +336,182 @@ const Bar = ({ pct, color, height = 4 }) => (
 );
 const Clock = () => {
   const [time, setTime] = useState("");
-  const [mktBadge, setMktBadge] = useState(getMarketBadge());
   useEffect(() => {
-    const tick = () => {
-      setTime(new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "America/Edmonton" }) + " MT");
-      setMktBadge(getMarketBadge());
-    };
+    const tick = () => setTime(new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "America/Edmonton" }) + " MT");
     tick();
     const i = setInterval(tick, 1000);
     return () => clearInterval(i);
   }, []);
+  return <span style={{ ...S.mono, fontSize: 13, color: C.t2 }}>{time}</span>;
+};
+// ── MARKET HOURS ──────────────────────────────────────────────
+const getMarketState = () => {
+  const now = new Date();
+  const mt = new Date(now.toLocaleString("en-US", { timeZone: "America/Edmonton" }));
+  const h = mt.getHours(), m = mt.getMinutes(), day = mt.getDay();
+  if (day === 0 || day === 6) return "weekend";
+  if (h < 5) return "closed";
+  if (h < 7 || (h === 7 && m < 30)) return "premarket";
+  if (h < 14) return "open";
+  if (h < 16) return "afterhours";
+  return "closed";
+};
+const mktBadges = { weekend: { t: "WEEKEND", c: "#7c4dff" }, premarket: { t: "PRE-MARKET", c: "#ffab00" }, open: { t: "MARKET OPEN", c: "#00e676" }, afterhours: { t: "AFTER HOURS", c: "#ff9100" }, closed: { t: "CLOSED", c: "#546e7a" } };
+const chgColor = (v) => v > 0 ? "#00ff88" : v < 0 ? "#ff4444" : "#888";
+const chgArrow = (v) => v > 0 ? "▲" : v < 0 ? "▼" : "—";
+const fmtPct = (v) => (v > 0 ? "+" : "") + (v || 0).toFixed(1) + "%";
+
+// ── v8: MARKET PULSE BAR ──────────────────────────────────────
+const MarketPulseBar = ({ lm, pulse }) => {
+  if (!lm) return (
+    <div style={{ display: "flex", gap: 10, justifyContent: "center", alignItems: "center", padding: "8px 14px", background: C.s1, border: `1px solid ${C.b}`, borderRadius: 6, fontSize: 11, color: C.t3 }}>
+      <span style={{ animation: "pulse 1.5s infinite" }}>Waiting for market data...</span>
+    </div>
+  );
+  const mb = mktBadges[lm.marketStatus] || mktBadges.closed;
+  const items = [
+    { label: "BTC", val: "$" + (lm.btc?.usd || 0).toLocaleString(), chg: lm.btc?.change24h },
+    { label: "VIX", val: (lm.vix?.value || 0).toFixed(1), chg: lm.vix?.change },
+    { label: "F&G", val: String(lm.fearGreed?.value || "—"), extra: lm.fearGreed?.label, chg: null, fgColor: (lm.fearGreed?.value || 50) <= 25 ? C.red : (lm.fearGreed?.value || 50) <= 45 ? C.orange : (lm.fearGreed?.value || 50) <= 55 ? C.gold : C.green },
+    { label: "USD/CAD", val: (lm.fx?.usdCad || 0).toFixed(4), chg: null },
+    { label: "S&P", val: (lm.sp500?.value || 0).toLocaleString(), chg: lm.sp500?.change },
+  ];
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
-      <span style={{ ...S.mono, fontSize: 13, color: C.t2 }}>{time}</span>
-      {mktBadge && <span style={{ ...S.exo, fontSize: 8, fontWeight: 700, color: mktBadge.color, letterSpacing: 2, padding: "1px 6px", border: `1px solid ${mktBadge.color}40`, borderRadius: 3, textShadow: `0 0 6px ${mktBadge.color}55` }}>{mktBadge.text}</span>}
+    <div style={{ display: "flex", gap: 6, alignItems: "center", padding: "7px 12px", background: C.s1, border: `1px solid ${C.b2}`, borderRadius: 6, overflow: "auto", transition: "box-shadow 0.8s", boxShadow: pulse ? `0 0 12px ${C.cyan}33` : "none" }}>
+      {items.map((it, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", borderRight: i < items.length - 1 ? `1px solid ${C.b}` : "none", whiteSpace: "nowrap" }}>
+          <span style={{ ...S.exo, fontSize: 9, color: C.t3, letterSpacing: 1 }}>{it.label}</span>
+          <span style={{ ...S.mono, fontSize: 12, fontWeight: 700, color: it.fgColor || C.t }}>{it.val}</span>
+          {it.chg != null && <span style={{ ...S.mono, fontSize: 10, color: chgColor(it.chg) }}>{chgArrow(it.chg)}{Math.abs(it.chg).toFixed(1)}%</span>}
+          {it.extra && <span style={{ ...S.exo, fontSize: 8, color: it.fgColor || C.t3, letterSpacing: 1, textTransform: "uppercase" }}>{it.extra}</span>}
+        </div>
+      ))}
+      <div style={{ marginLeft: "auto", padding: "2px 8px", border: `1px solid ${mb.c}55`, borderRadius: 3, whiteSpace: "nowrap" }}>
+        <span style={{ ...S.exo, fontSize: 8, fontWeight: 700, color: mb.c, letterSpacing: 2 }}>{mb.t}</span>
+      </div>
     </div>
   );
 };
+
+// ── v8: LIVE PRICE TILES ──────────────────────────────────────
+const HELD_TICKERS = ["TSLA","MSTR","ONDS","RKLB","MU","NBIS","IREN","IBRX","COIN","HOOD","BTCI","QQQI"];
+const WATCH_TICKERS = ["RTX","LMT","NOC","GD"];
+const PriceTile = ({ sym, data, pulse, positions }) => {
+  const price = data?.price || 0;
+  const chg = data?.change || 0;
+  const cc = chgColor(chg);
+  const pos = positions?.find(p => p.ticker === sym);
+  const badge = pos ? (pos.type === "CALL" ? "CC" : "CSP") : null;
+  return (
+    <div style={{ background: C.s2, border: `1px solid ${C.b2}`, borderRadius: 6, padding: "10px 12px", transition: "box-shadow 0.8s, transform 0.3s", boxShadow: pulse ? `0 0 8px ${cc}44` : "none", cursor: "default", minWidth: 100 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+        <span style={{ ...S.exo, fontSize: 13, fontWeight: 700, color: C.t, letterSpacing: 1 }}>{sym}</span>
+        {badge && <span style={{ ...S.badge, background: badge === "CC" ? "rgba(224,64,251,.15)" : "rgba(0,229,255,.15)", color: badge === "CC" ? C.purple : C.cyan, fontSize: 8 }}>{badge}</span>}
+      </div>
+      <div style={{ ...S.mono, fontSize: 16, fontWeight: 700, color: C.t }}>${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+      <div style={{ ...S.mono, fontSize: 11, color: cc, marginTop: 2 }}>{chgArrow(chg)} {fmtPct(chg)}</div>
+    </div>
+  );
+};
+const LivePriceTiles = ({ lm, pulse, positions }) => {
+  if (!lm?.stocks) return null;
+  return (
+    <Panel title="📡 LIVE PRICE TILES" titleColor={C.cyan} right={<span style={{ ...S.mono, fontSize: 10, color: C.green }}>LIVE</span>}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 8 }}>
+        {HELD_TICKERS.map(sym => <PriceTile key={sym} sym={sym} data={lm.stocks[sym]} pulse={pulse} positions={positions} />)}
+      </div>
+    </Panel>
+  );
+};
+
+// ── v8: WATCHLIST ROW ──────────────────────────────────────────
+const WatchlistRow = ({ lm }) => {
+  if (!lm?.stocks) return null;
+  const has = WATCH_TICKERS.filter(s => lm.stocks[s]);
+  if (!has.length) return null;
+  return (
+    <div style={{ display: "flex", gap: 6, alignItems: "center", padding: "6px 12px", background: C.s1, border: `1px solid ${C.b}`, borderRadius: 6, overflow: "auto" }}>
+      <span style={{ ...S.exo, fontSize: 9, color: C.gold, letterSpacing: 2, marginRight: 4 }}>WATCH</span>
+      {has.map(sym => {
+        const d = lm.stocks[sym];
+        return (
+          <div key={sym} style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 8px", background: C.s2, borderRadius: 4, border: `1px solid ${C.b}` }}>
+            <span style={{ ...S.exo, fontSize: 10, fontWeight: 700, color: C.t }}>{sym}</span>
+            <span style={{ ...S.mono, fontSize: 11, color: C.t2 }}>${d.price?.toFixed(2)}</span>
+            <span style={{ ...S.mono, fontSize: 10, color: chgColor(d.change) }}>{chgArrow(d.change)}{Math.abs(d.change || 0).toFixed(1)}%</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+// ── v8: FEAR & GREED GAUGE (large, live) ──────────────────────
+const FearGreedGaugeLive = ({ lm }) => {
+  const fg = lm?.fearGreed;
+  const vix = lm?.vix;
+  const fgVal = fg?.value ?? 50;
+  const fgLabel = fg?.label || "Unknown";
+  const vixVal = vix?.value ?? 20;
+  const fgColor = fgVal <= 25 ? C.red : fgVal <= 45 ? C.orange : fgVal <= 55 ? C.gold : fgVal <= 75 ? C.green : C.cyan;
+  const vixColor = vixVal > 30 ? C.red : vixVal > 20 ? C.orange : vixVal > 15 ? C.gold : C.green;
+  const vixLabel = vixVal > 30 ? "High Fear" : vixVal > 20 ? "Elevated" : vixVal > 15 ? "Normal" : "Complacency";
+  const renderGauge = (val, maxVal, color, label, title, isLive) => {
+    const pct = Math.min(100, (val / maxVal) * 100);
+    const angle = -90 + (pct / 100) * 180;
+    return (
+      <div style={{ background: C.s2, border: `1px solid ${C.b2}`, borderRadius: 8, padding: "14px 16px", flex: 1 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <span style={{ ...S.exo, fontSize: 10, fontWeight: 700, color: C.t3, letterSpacing: 2 }}>{title}</span>
+          {isLive && <span style={{ ...S.mono, fontSize: 9, color: C.green, textShadow: `0 0 6px ${C.green}` }}>LIVE</span>}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+          <svg width="180" height="100" viewBox="0 0 180 100">
+            <defs><linearGradient id={`fg-${title}`} x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor={C.red} /><stop offset="25%" stopColor={C.orange} /><stop offset="50%" stopColor={C.gold} /><stop offset="75%" stopColor={C.green} /><stop offset="100%" stopColor={C.cyan} /></linearGradient></defs>
+            <path d="M 15 90 A 75 75 0 0 1 165 90" fill="none" stroke="rgba(0,170,255,.1)" strokeWidth="10" strokeLinecap="round" />
+            <path d="M 15 90 A 75 75 0 0 1 165 90" fill="none" stroke={`url(#fg-${title})`} strokeWidth="10" strokeLinecap="round" strokeDasharray={`${pct * 2.36} 236`} opacity="0.7" />
+            <line x1="90" y1="90" x2={90 + 55 * Math.cos((angle * Math.PI) / 180)} y2={90 + 55 * Math.sin((angle * Math.PI) / 180)} stroke={color} strokeWidth="2.5" strokeLinecap="round" style={{ filter: `drop-shadow(0 0 4px ${color})` }} />
+            <circle cx="90" cy="90" r="4" fill={color} style={{ filter: `drop-shadow(0 0 6px ${color})` }} />
+          </svg>
+          <div style={{ ...S.mono, fontSize: 28, fontWeight: 700, color, marginTop: 4, textShadow: `0 0 12px ${color}` }}>{val}</div>
+          <div style={{ ...S.exo, fontSize: 11, fontWeight: 700, color, letterSpacing: 2, textTransform: "uppercase", marginTop: 2 }}>{label}</div>
+        </div>
+      </div>
+    );
+  };
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      {renderGauge(fgVal, 100, fgColor, fgLabel, "CRYPTO FEAR & GREED", !!fg)}
+      {renderGauge(vixVal, 50, vixColor, vixLabel, "VIX / MARKET SENTIMENT", !!vix)}
+    </div>
+  );
+};
+
+// ── v8: DATA FRESHNESS BAR ────────────────────────────────────
+const DataFreshnessBar = ({ dataAge, syncStatus, lm }) => {
+  const mkt = mktBadges[lm?.marketStatus || getMarketState()];
+  const ageStr = dataAge == null ? "—" : dataAge < 60 ? `${dataAge}s ago` : `${Math.round(dataAge / 60)}m ago`;
+  const sc = syncStatus === "fresh" ? C.green : syncStatus === "stale" ? C.orange : C.red;
+  const icon = syncStatus === "fresh" ? "●" : syncStatus === "stale" ? "⚠️" : "🔴";
+  const heartbeat = lm?.updatedAt ? new Date(lm.updatedAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", timeZone: "America/Edmonton" }) : "—";
+  return (
+    <div style={{ display: "flex", justifyContent: "center", gap: 16, padding: "6px 12px", background: C.s1, border: `1px solid ${C.b}`, borderRadius: 6, fontSize: 10, color: C.t3 }}>
+      <span><span style={{ color: sc }}>{icon}</span> Live data: <span style={{ color: sc, fontWeight: 700 }}>{ageStr}</span></span>
+      <span>Gizmo heartbeat: <span style={{ color: C.t2 }}>{heartbeat} MT</span></span>
+      <span>Market: <span style={{ color: mkt?.c || C.t3, fontWeight: 700 }}>{mkt?.t || "UNKNOWN"}</span></span>
+    </div>
+  );
+};
+
 // ═══════════════════════════════════════════════════════════════
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════
 function GizmoCommandCentre() {
   const [state, setState] = useState(DEFAULT_STATE);
+  const [liveMarket, setLiveMarket] = useState(null);
+  const [dataAge, setDataAge] = useState(null); // seconds since last update
+  const [syncStatus, setSyncStatus] = useState("connecting"); // connecting | fresh | stale | offline
+  const [justRefreshed, setJustRefreshed] = useState(false); // pulse animation trigger
   const [tab, setTab] = useState("dashboard");
   const [cmdOpen, setCmdOpen] = useState(false);
   const [cmdQuery, setCmdQuery] = useState("");
@@ -535,16 +525,80 @@ function GizmoCommandCentre() {
   const [newQuickCmd, setNewQuickCmd] = useState("");
   const [agentFilter, setAgentFilter] = useState("gizmo");
   const saveTimer = useRef(null);
+  const lastFetchRef = useRef(null);
+
+  // ── SAFE ACCESSORS (guard against non-array state shapes) ──
+  const safeAlerts = Array.isArray(state.alerts) ? state.alerts : [];
+  const safeTasks = Array.isArray(state.tasks) ? state.tasks : [];
+  const safeRocks = Array.isArray(state.rocks) ? state.rocks : [];
+  const safeActivity = Array.isArray(state.activity) ? state.activity : [];
+  const safeAgents = Array.isArray(state.agents) ? state.agents : [];
+  const safeDomains = (state.domains && typeof state.domains === "object" && !Array.isArray(state.domains)) ? state.domains : {};
+  const safeInbox = Array.isArray(state.inbox) ? state.inbox : [];
+  const safeIncome = state.income || {};
+  const safeOpenPositions = Array.isArray(safeIncome.openPositions) ? safeIncome.openPositions : [];
+  const safeTopEarners = Array.isArray(safeIncome.topEarners) ? safeIncome.topEarners : [];
+  const safeCronHealth = Array.isArray(state.cronHealth) ? state.cronHealth : [];
+
+  // ── LIVE DATA POLLING (v8) ────────────────────────────────
+  const fetchLiveState = useCallback(async () => {
+    try {
+      const resp = await fetch(STATE_URL + "?t=" + Date.now(), { cache: "no-store" });
+      if (resp.ok) {
+        const data = await resp.json();
+        // Merge server state into local state
+        setState(prev => {
+          const merged = { ...prev, ...data };
+          if (data.gizmo_agent) merged.gizmo_agent = { ...prev.gizmo_agent, ...data.gizmo_agent };
+          return merged;
+        });
+        // Extract liveMarket data
+        if (data.liveMarket) {
+          setLiveMarket(data.liveMarket);
+        }
+        lastFetchRef.current = Date.now();
+        setSyncStatus("fresh");
+        setJustRefreshed(true);
+        setTimeout(() => setJustRefreshed(false), 800);
+        return true;
+      }
+    } catch (e) {
+      console.log("[Gizmo] Fetch failed:", e.message);
+      setSyncStatus(lastFetchRef.current ? "stale" : "offline");
+    }
+    return false;
+  }, []);
+
+  // Poll every 30s
   useEffect(() => {
-    (() => {
+    fetchLiveState(); // initial fetch
+    const interval = setInterval(fetchLiveState, POLL_INTERVAL);
+    return () => clearInterval(interval);
+  }, [fetchLiveState]);
+
+  // Update data age counter every second
+  useEffect(() => {
+    const tick = () => {
+      if (lastFetchRef.current) {
+        const age = Math.round((Date.now() - lastFetchRef.current) / 1000);
+        setDataAge(age);
+        if (age > 300) setSyncStatus("stale"); // >5 min = stale
+      }
+    };
+    tick();
+    const i = setInterval(tick, 1000);
+    return () => clearInterval(i);
+  }, []);
+
+  // Load from local storage (fallback when server unreachable)
+  useEffect(() => {
+    (async () => {
       try {
-        {
-          const saved = localStorage.getItem(STORAGE_KEY);
+        if (window.storage) {
+          const saved = await window.storage.get(STORAGE_KEY);
           if (saved) {
             const parsed = JSON.parse(saved);
-            // Deep merge with defaults so new keys (like gizmo_agent) are always present
             const merged = { ...DEFAULT_STATE, ...parsed };
-            // Ensure nested objects get defaults too
             if (!merged.gizmo_agent || !merged.gizmo_agent.scorecard) merged.gizmo_agent = { ...DEFAULT_STATE.gizmo_agent, ...(parsed.gizmo_agent || {}) };
             if (!merged.gizmo_agent.tokenUsage) merged.gizmo_agent.tokenUsage = DEFAULT_STATE.gizmo_agent.tokenUsage;
             if (!merged.gizmo_agent.dataFreshness) merged.gizmo_agent.dataFreshness = DEFAULT_STATE.gizmo_agent.dataFreshness;
@@ -557,38 +611,18 @@ function GizmoCommandCentre() {
       } catch (e) { console.log("Storage load error:", e); }
     })();
   }, []);
-  // Register sync callback — merges server state + live Fear & Greed
-  useEffect(() => {
-    window.__gizmoSyncCallback = (remoteState) => {
-      setState(prev => {
-        let merged;
-        if (remoteState) {
-          merged = { ...prev, ...remoteState };
-          if (remoteState.gizmo_agent) merged.gizmo_agent = { ...prev.gizmo_agent, ...remoteState.gizmo_agent };
-        } else {
-          merged = { ...prev };
-        }
-        // Overlay live Fear & Greed API data if available
-        if (liveFearGreed) {
-          merged.fearGreed = { ...merged.fearGreed, crypto: liveFearGreed };
-        }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-        return merged;
-      });
-    };
-    return () => { window.__gizmoSyncCallback = null; };
-  }, []);
   const save = useCallback((newState) => {
     setState(newState);
     clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
+    saveTimer.current = setTimeout(async () => {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+        if (window.storage) await window.storage.set(STORAGE_KEY, JSON.stringify(newState));
       } catch (e) { console.log("Storage save error:", e); }
     }, 500);
   }, []);
   useEffect(() => {
-    const hasRed = state.alerts.some((a) => a.level === "red");
+    const alerts = Array.isArray(state.alerts) ? state.alerts : [];
+    const hasRed = alerts.some((a) => a.level === "red");
     if (hasRed) setGizmoState("alert");
     else setGizmoState("online");
   }, [state.alerts]);
@@ -599,28 +633,31 @@ function GizmoCommandCentre() {
   }, []);
   const cycleTask = (id) => {
     const next = { queued: "in_progress", in_progress: "done", done: "queued" };
-    const task = state.tasks.find((t) => t.id === id);
-    const newTasks = state.tasks.map((t) => t.id === id ? { ...t, status: next[t.status] || "queued" } : t);
-    const newActivity = [{ ts: new Date().toISOString(), type: "task", text: `${task?.title} → ${next[task?.status]}` }, ...state.activity].slice(0, 50);
+    const task = safeTasks.find((t) => t.id === id);
+    const newTasks = safeTasks.map((t) => t.id === id ? { ...t, status: next[t.status] || "queued" } : t);
+    const newActivity = [{ ts: new Date().toISOString(), type: "task", text: `${task?.title} → ${next[task?.status]}` }, ...safeActivity].slice(0, 50);
     save({ ...state, tasks: newTasks, activity: newActivity });
   };
   const addTask = () => {
     if (!newTaskText.trim()) return;
     const newTask = { id: Date.now(), title: newTaskText.trim(), status: "queued", priority: "medium", effort: "", domain: "operations" };
-    save({ ...state, tasks: [...state.tasks, newTask], activity: [{ ts: new Date().toISOString(), type: "task", text: `Added: ${newTask.title}` }, ...state.activity].slice(0, 50) });
+    save({ ...state, tasks: [...state.tasks, newTask], activity: [{ ts: new Date().toISOString(), type: "task", text: `Added: ${newTask.title}` }, ...safeActivity].slice(0, 50) });
     setNewTaskText("");
   };
   const getTop3 = () => {
     const items = [];
-    const overdueRocks = state.rocks.filter((r) => !r.done && new Date(r.due) < new Date());
-    const urgentTasks = [...state.tasks].filter((t) => t.status !== "done").sort((a, b) => { const o = { urgent: 0, high: 1, medium: 2, low: 3 }; return (o[a.priority] ?? 2) - (o[b.priority] ?? 2); });
-    const redDomains = Object.entries(state.domains).filter(([, v]) => v.status === "red");
+    const rocks = Array.isArray(state.rocks) ? state.rocks : [];
+    const tasks = Array.isArray(state.tasks) ? state.tasks : [];
+    const domains = (state.domains && typeof state.domains === "object" && !Array.isArray(state.domains)) ? state.domains : {};
+    const overdueRocks = rocks.filter((r) => !r.done && new Date(r.due) < new Date());
+    const urgentTasks = [...tasks].filter((t) => t.status !== "done").sort((a, b) => { const o = { urgent: 0, high: 1, medium: 2, low: 3 }; return (o[a.priority] ?? 2) - (o[b.priority] ?? 2); });
+    const redDomains = Object.entries(domains).filter(([, v]) => v.status === "red");
     if (overdueRocks[0]) items.push({ text: overdueRocks[0].text, domain: overdueRocks[0].domain, color: C.red });
     if (urgentTasks[0]) items.push({ text: urgentTasks[0].title, domain: urgentTasks[0].domain, color: PC[urgentTasks[0].priority] || C.gold });
     if (redDomains[0]) items.push({ text: `Check ${domainLabel(redDomains[0][0])}`, domain: redDomains[0][0], color: C.red });
     if (items.length < 3 && urgentTasks[1]) items.push({ text: urgentTasks[1].title, domain: urgentTasks[1].domain, color: PC[urgentTasks[1].priority] || C.gold });
     if (items.length < 3) {
-      const activeRock = state.rocks.find((r) => !r.done);
+      const activeRock = rocks.find((r) => !r.done);
       if (activeRock) items.push({ text: activeRock.text, domain: activeRock.domain, color: C.gold });
     }
     return items.slice(0, 3);
@@ -659,7 +696,7 @@ function GizmoCommandCentre() {
     </div>
   );
   const AlertBanner = () => {
-    const reds = state.alerts.filter((a) => a.level === "red");
+    const reds = (Array.isArray(state.alerts) ? state.alerts : []).filter((a) => a.level === "red");
     if (!reds.length) return null;
     return (
       <div style={{ background: "rgba(255,23,68,.07)", border: "1px solid rgba(255,23,68,.25)", borderRadius: 6, padding: "8px 15px", display: "flex", alignItems: "center", gap: 10, animation: "gPulseRed 2s ease-in-out infinite", cursor: "pointer" }} onClick={() => setTab("gizmo")}>
@@ -693,7 +730,7 @@ function GizmoCommandCentre() {
     const sc = mx.scorecard || {};
     const tk = mx.tokenUsage || {};
     const rwy = tk.runway || {};
-    const gizmoAgent = state.agents.find(a => a.name === "Gizmo");
+    const gizmoAgent = safeAgents.find(a => a.name === "Gizmo");
     const isOnline = gizmoAgent?.status === "online";
     const pendingHandoffs = (mx.handoffs || []).filter(h => h.status === "pending");
     const hitRate = sc.hitRate || 0;
@@ -708,7 +745,7 @@ function GizmoCommandCentre() {
       let newState = { ...state, gizmo_agent: { ...mx, handoffs } };
       if (action === "accepted" && item) {
         const newTask = { id: Date.now(), title: item.text, status: "queued", priority: item.urgency === "urgent" ? "urgent" : "high", effort: "", domain: item.domain };
-        newState = { ...newState, tasks: [...state.tasks, newTask], activity: [{ ts: new Date().toISOString(), type: "task", text: `Gizmo handoff accepted: ${item.text.slice(0,40)}...` }, ...state.activity].slice(0, 50) };
+        newState = { ...newState, tasks: [...state.tasks, newTask], activity: [{ ts: new Date().toISOString(), type: "task", text: `Gizmo handoff accepted: ${item.text.slice(0,40)}...` }, ...safeActivity].slice(0, 50) };
       }
       save(newState);
     };
@@ -748,8 +785,8 @@ function GizmoCommandCentre() {
 
         {/* Other agents */}
         <div style={{ borderTop: `1px solid ${C.b}`, paddingTop: 8 }}>
-          {state.agents.map((a, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", borderBottom: i < state.agents.length - 1 ? `1px solid ${C.b}` : "none" }}>
+          {safeAgents.map((a, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", borderBottom: i < safeAgents.length - 1 ? `1px solid ${C.b}` : "none" }}>
               <div style={{ width: 6, height: 6, borderRadius: "50%", background: a.status === "online" ? C.green : a.status === "error" ? C.red : C.t3, boxShadow: `0 0 4px ${a.status === "online" ? C.green : a.status === "error" ? C.red : "transparent"}` }} />
               <span style={{ ...S.mono, fontSize: 11, color: C.t2, flex: 1 }}>{a.name}</span>
               <span style={{ ...S.badge, background: a.status === "online" ? "rgba(0,230,118,.1)" : "rgba(255,23,68,.1)", color: a.status === "online" ? C.green : C.red, fontSize: 8 }}>{a.status}</span>
@@ -771,15 +808,15 @@ function GizmoCommandCentre() {
       { key: "done", label: "DONE", color: C.green },
     ];
     return (
-      <Panel title="✦ TASK BOARD" right={`${state.tasks.filter((t) => t.status !== "done").length} open`}>
+      <Panel title="✦ TASK BOARD" right={`${safeTasks.filter((t) => t.status !== "done").length} open`}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
           {cols.map((col) => (
             <div key={col.key}>
               <div style={{ ...S.exo, fontSize: 9, fontWeight: 700, color: col.color, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8, textAlign: "center", paddingBottom: 6, borderBottom: `1px solid ${C.b}` }}>
-                {col.label} <span style={{ ...S.mono, fontSize: 10 }}>({state.tasks.filter((t) => t.status === col.key).length})</span>
+                {col.label} <span style={{ ...S.mono, fontSize: 10 }}>({safeTasks.filter((t) => t.status === col.key).length})</span>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 4, minHeight: 60 }}>
-                {state.tasks.filter((t) => t.status === col.key).sort((a, b) => { const o = { urgent: 0, high: 1, medium: 2, low: 3 }; return (o[a.priority] ?? 2) - (o[b.priority] ?? 2); }).map((t) => (
+                {safeTasks.filter((t) => t.status === col.key).sort((a, b) => { const o = { urgent: 0, high: 1, medium: 2, low: 3 }; return (o[a.priority] ?? 2) - (o[b.priority] ?? 2); }).map((t) => (
                   <div key={t.id} onClick={() => cycleTask(t.id)} style={{ background: "rgba(0,170,255,.03)", border: `1px solid ${C.b}`, borderLeft: `3px solid ${PC[t.priority] || C.t3}`, padding: "7px 8px", borderRadius: 4, cursor: "pointer", transition: "all .15s", opacity: col.key === "done" ? 0.4 : 1 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: col.key === "done" ? C.t3 : C.t, textDecoration: col.key === "done" ? "line-through" : "none", lineHeight: 1.3 }}>{t.title}</div>
                     <div style={{ display: "flex", gap: 6, marginTop: 4, alignItems: "center" }}>
@@ -803,7 +840,7 @@ function GizmoCommandCentre() {
     const filters = ["ALL", "TASK", "ALERT", "SYSTEM"];
     const typeColors = { task: C.cyan, alert: C.orange, system: C.blue };
     const typeIcons = { task: "✦", alert: "⚠", system: "⚙" };
-    const filtered = logFilter === "ALL" ? state.activity : state.activity.filter((a) => a.type === logFilter.toLowerCase());
+    const filtered = logFilter === "ALL" ? state.activity : safeActivity.filter((a) => a.type === logFilter.toLowerCase());
     return (
       <Panel title="◉ HEARTBEAT" right="Live log">
         <div style={{ display: "flex", gap: 2, marginBottom: 10 }}>
@@ -859,9 +896,9 @@ function GizmoCommandCentre() {
     );
   };
   const RocksStrip = () => {
-    const active = state.rocks.filter((r) => !r.done).length;
-    const done = state.rocks.filter((r) => r.done).length;
-    const overdue = state.rocks.filter((r) => !r.done && new Date(r.due) < new Date()).length;
+    const active = safeRocks.filter((r) => !r.done).length;
+    const done = safeRocks.filter((r) => r.done).length;
+    const overdue = safeRocks.filter((r) => !r.done && new Date(r.due) < new Date()).length;
     return (
       <div onClick={() => setTab("rocks")} style={{ ...S.scard, display: "flex", alignItems: "center", justifyContent: "center", gap: 16, cursor: "pointer", padding: "10px 18px" }}>
         <span style={{ ...S.exo, fontSize: 11, fontWeight: 700, color: C.glow, letterSpacing: 2 }}>◆ 90-DAY ROCKS</span>
@@ -873,7 +910,7 @@ function GizmoCommandCentre() {
     );
   };
   const DomainGrid = () => {
-    const domains = Object.entries(state.domains);
+    const domains = Object.entries(safeDomains);
     return (
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 10 }}>
         {domains.map(([key, d]) => (
@@ -896,8 +933,11 @@ function GizmoCommandCentre() {
   };
   const DashboardView = () => (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <MarketPulseBar lm={liveMarket} pulse={justRefreshed} />
       <AlertBanner />
       <Top3Today />
+      <LivePriceTiles lm={liveMarket} pulse={justRefreshed} positions={state.income?.openPositions} />
+      <WatchlistRow lm={liveMarket} />
       <div style={{ display: "grid", gridTemplateColumns: "240px 1fr 280px", gap: 12 }}>
         <AgentStatus />
         <Kanban />
@@ -918,7 +958,7 @@ function GizmoCommandCentre() {
     };
     const top3 = getTop3();
     const theOne = top3[0];
-    const todayTasks = [...state.tasks].filter((t) => t.status !== "done").sort((a, b) => { const o = { urgent: 0, high: 1, medium: 2, low: 3 }; return (o[a.priority] ?? 2) - (o[b.priority] ?? 2); });
+    const todayTasks = [...safeTasks].filter((t) => t.status !== "done").sort((a, b) => { const o = { urgent: 0, high: 1, medium: 2, low: 3 }; return (o[a.priority] ?? 2) - (o[b.priority] ?? 2); });
     const quickWins = todayTasks.filter((t) => t.effort === "5 min" || t.effort === "1 cycle");
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -971,14 +1011,14 @@ function GizmoCommandCentre() {
   const RocksView = () => {
     const qEnd = new Date("2026-03-31");
     const daysLeft = Math.max(0, Math.ceil((qEnd - new Date()) / 86400000));
-    const done = state.rocks.filter((r) => r.done).length;
-    const total = state.rocks.length;
+    const done = safeRocks.filter((r) => r.done).length;
+    const total = safeRocks.length;
     const pct = total ? Math.round((done / total) * 100) : 0;
     const [showDone, setShowDone] = useState(false);
     const toggleRock = (id) => {
-      const newRocks = state.rocks.map((r) => r.id === id ? { ...r, done: !r.done } : r);
-      const rock = state.rocks.find((r) => r.id === id);
-      save({ ...state, rocks: newRocks, activity: [{ ts: new Date().toISOString(), type: "task", text: `Rock ${!rock?.done ? "completed" : "reopened"}: ${rock?.text}` }, ...state.activity].slice(0, 50) });
+      const newRocks = safeRocks.map((r) => r.id === id ? { ...r, done: !r.done } : r);
+      const rock = safeRocks.find((r) => r.id === id);
+      save({ ...state, rocks: newRocks, activity: [{ ts: new Date().toISOString(), type: "task", text: `Rock ${!rock?.done ? "completed" : "reopened"}: ${rock?.text}` }, ...safeActivity].slice(0, 50) });
     };
     const addRock = () => {
       if (!newRockText.trim()) return;
@@ -986,8 +1026,8 @@ function GizmoCommandCentre() {
       save({ ...state, rocks: [...state.rocks, rock] });
       setNewRockText("");
     };
-    const active = state.rocks.filter((r) => !r.done).sort((a, b) => new Date(a.due) - new Date(b.due));
-    const completed = state.rocks.filter((r) => r.done);
+    const active = safeRocks.filter((r) => !r.done).sort((a, b) => new Date(a.due) - new Date(b.due));
+    const completed = safeRocks.filter((r) => r.done);
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <Panel title="◆ 90-DAY ROCKS" titleColor={C.gold} right={`Q1 2026 · ${daysLeft} days left`}>
@@ -1049,7 +1089,7 @@ function GizmoCommandCentre() {
       setGizmoState("thinking");
       setGizmoResponse(null);
       try {
-        setGizmoResponse({ error: "Ask Gizmo is available via OpenClaw / Telegram. Direct API not available in web version." }); setGizmoState("online"); return; const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        const resp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-api-key": "YOUR_API_KEY", "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
           body: JSON.stringify({
@@ -1116,8 +1156,8 @@ function GizmoCommandCentre() {
             </div>
           )}
         </Panel>
-        <Panel title="⊕ CAPTURE & INBOX" right={state.inbox.length ? `${state.inbox.length} untriaged` : "✓ clear"}>
-          <div style={{ display: "flex", gap: 8, marginBottom: state.inbox.length ? 12 : 0 }}>
+        <Panel title="⊕ CAPTURE & INBOX" right={safeInbox.length ? `${safeInbox.length} untriaged` : "✓ clear"}>
+          <div style={{ display: "flex", gap: 8, marginBottom: safeInbox.length ? 12 : 0 }}>
             <input value={newInboxText} onChange={(e) => setNewInboxText(e.target.value)} onKeyDown={(e) => {
               if (e.key === "Enter" && newInboxText.trim()) {
                 const item = { id: Date.now(), text: newInboxText.trim(), ts: new Date().toISOString(), domain: null };
@@ -1132,17 +1172,17 @@ function GizmoCommandCentre() {
               setNewInboxText("");
             }} style={{ ...S.hbtn, padding: "9px 16px" }}>+</button>
           </div>
-          {state.inbox.map((item) => (
+          {safeInbox.map((item) => (
             <div key={item.id} style={{ padding: "8px 0", borderBottom: `1px solid ${C.b}` }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 5 }}>
                 <span style={{ fontSize: 13, color: C.t }}>{item.text}</span>
-                <button onClick={() => save({ ...state, inbox: state.inbox.filter((i) => i.id !== item.id) })} style={{ background: "none", border: "none", color: C.t3, cursor: "pointer", fontSize: 13, padding: "0 4px" }}>✕</button>
+                <button onClick={() => save({ ...state, inbox: safeInbox.filter((i) => i.id !== item.id) })} style={{ background: "none", border: "none", color: C.t3, cursor: "pointer", fontSize: 13, padding: "0 4px" }}>✕</button>
               </div>
               <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
                 {Object.keys(DOMAIN_COLORS).slice(0, 9).map((d) => (
                   <button key={d} onClick={() => {
                     const newTask = { id: Date.now(), title: item.text, status: "queued", priority: "medium", effort: "", domain: d };
-                    save({ ...state, inbox: state.inbox.filter((i) => i.id !== item.id), tasks: [...state.tasks, newTask], activity: [{ ts: new Date().toISOString(), type: "task", text: `Triaged: ${item.text} → ${d}` }, ...state.activity].slice(0, 50) });
+                    save({ ...state, inbox: safeInbox.filter((i) => i.id !== item.id), tasks: [...state.tasks, newTask], activity: [{ ts: new Date().toISOString(), type: "task", text: `Triaged: ${item.text} → ${d}` }, ...safeActivity].slice(0, 50) });
                   }} style={{ padding: "2px 7px", background: `${DOMAIN_COLORS[d]}11`, border: `1px solid ${DOMAIN_COLORS[d]}33`, borderRadius: 3, color: DOMAIN_COLORS[d], fontFamily: "'Exo 2', sans-serif", fontSize: 8, fontWeight: 600, letterSpacing: 1, cursor: "pointer", textTransform: "uppercase" }}>{d}</button>
                 ))}
               </div>
@@ -1154,7 +1194,7 @@ function GizmoCommandCentre() {
             <span style={{ color: C.t3, fontSize: 11 }}>{sysOpen.agents ? "▼" : "▶"}</span>
             <span style={{ ...S.exo, fontSize: 10, color: C.glow, letterSpacing: 2 }}>AGENT REGISTRY</span>
           </div>
-          {sysOpen.agents && state.agents.map((a, i) => (
+          {sysOpen.agents && safeAgents.map((a, i) => (
             <div key={i} style={{ ...S.scard, marginBottom: 6, display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{ width: 8, height: 8, borderRadius: "50%", background: a.status === "online" ? C.green : C.red, boxShadow: `0 0 5px ${a.status === "online" ? C.green : C.red}` }} />
               <div style={{ flex: 1 }}>
@@ -1193,7 +1233,7 @@ function GizmoCommandCentre() {
             <span style={{ color: C.t3, fontSize: 11 }}>{sysOpen.log ? "▼" : "▶"}</span>
             <span style={{ ...S.exo, fontSize: 10, color: C.glow, letterSpacing: 2 }}>FULL ACTIVITY LOG</span>
           </div>
-          {sysOpen.log && state.activity.map((a, i) => (
+          {sysOpen.log && safeActivity.map((a, i) => (
             <div key={i} style={{ display: "flex", gap: 8, padding: "4px 0", borderBottom: `1px solid ${C.b}`, fontSize: 11 }}>
               <span style={{ ...S.mono, color: C.t3, minWidth: 42 }}>{new Date(a.ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })}</span>
               <span style={{ color: { task: C.cyan, alert: C.orange, system: C.blue }[a.type] || C.t3 }}>{{ task: "✦", alert: "⚠", system: "⚙" }[a.type] || "·"}</span>
@@ -1229,7 +1269,7 @@ function GizmoCommandCentre() {
   };
   const AgentsView = () => {
     const mx = state.gizmo_agent;
-    const agent = state.agents.find(a => a.name === "Gizmo");
+    const agent = safeAgents.find(a => a.name === "Gizmo");
     const isOnline = agent?.status === "online";
     const ratingColors = { useful: C.green, noise: C.t3, missed: C.red };
     const ratingIcons = { useful: "✓", noise: "~", missed: "✕" };
@@ -1258,7 +1298,7 @@ function GizmoCommandCentre() {
       let newState = { ...state, gizmo_agent: { ...mx, handoffs: handoffs } };
       if (action === "accepted" && item) {
         const newTask = { id: Date.now(), title: item.text, status: "queued", priority: item.urgency === "urgent" ? "urgent" : "high", effort: "", domain: item.domain };
-        newState = { ...newState, tasks: [...state.tasks, newTask], activity: [{ ts: new Date().toISOString(), type: "task", text: `Gizmo handoff accepted: ${item.text.slice(0,40)}...` }, ...state.activity].slice(0, 50) };
+        newState = { ...newState, tasks: [...state.tasks, newTask], activity: [{ ts: new Date().toISOString(), type: "task", text: `Gizmo handoff accepted: ${item.text.slice(0,40)}...` }, ...safeActivity].slice(0, 50) };
       }
       save(newState);
     };
@@ -1273,7 +1313,7 @@ function GizmoCommandCentre() {
     const sendQuickCmd = () => {
       if (!newQuickCmd.trim()) return;
       const cmd = { id: Date.now(), text: newQuickCmd.trim(), ts: new Date().toISOString(), status: "queued" };
-      save({ ...state, gizmo_agent: { ...mx, quickCommands: [...mx.quickCommands, cmd] }, activity: [{ ts: new Date().toISOString(), type: "system", text: `Quick cmd to Gizmo: ${cmd.text.slice(0,40)}` }, ...state.activity].slice(0, 50) });
+      save({ ...state, gizmo_agent: { ...mx, quickCommands: [...mx.quickCommands, cmd] }, activity: [{ ts: new Date().toISOString(), type: "system", text: `Quick cmd to Gizmo: ${cmd.text.slice(0,40)}` }, ...safeActivity].slice(0, 50) });
       setNewQuickCmd("");
     };
 
@@ -1525,10 +1565,10 @@ function GizmoCommandCentre() {
     const fin = state.finance;
     const r30 = inc.rolling30d;
     const r14 = inc.rolling14d;
-    const openTotal = inc.openPositions.reduce((s, p) => s + p.premium, 0);
+    const openTotal = (Array.isArray(inc.openPositions) ? inc.openPositions : []).reduce((s, p) => s + p.premium, 0);
     const c30 = pctColor(r30.pctOfTarget);
     const c14 = pctColor(r14.pctOfTarget);
-    const nearDTE = inc.openPositions.reduce((m, p) => Math.min(m, p.dte), 999);
+    const nearDTE = (Array.isArray(inc.openPositions) ? inc.openPositions : []).reduce((m, p) => Math.min(m, p.dte), 999);
     const dtec = nearDTE <= 7 ? C.red : nearDTE <= 14 ? C.orange : C.t2;
     const fw = inc.flywheel;
     const maxV = Math.max(...inc.monthly.map((m) => Math.max(m.totalCAD || 0, 0)), inc.target) * 1.18;
@@ -1559,7 +1599,7 @@ function GizmoCommandCentre() {
               <div style={S.lbl}>OPEN PREMIUM</div>
               <div style={{ ...S.val, fontSize: 25, color: C.blue }}>{fmtUSD(openTotal)} USD</div>
               <div style={{ marginTop: 9, display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ ...S.exo, fontSize: 9, color: C.t3, letterSpacing: 1.5 }}>{inc.openPositions.length} POSITIONS</span>
+                <span style={{ ...S.exo, fontSize: 9, color: C.t3, letterSpacing: 1.5 }}>{(Array.isArray(inc.openPositions) ? inc.openPositions : []).length} POSITIONS</span>
                 <span style={{ ...S.mono, fontSize: 10, color: dtec }}>NEAREST: {nearDTE}d</span>
               </div>
             </div>
@@ -1600,8 +1640,8 @@ function GizmoCommandCentre() {
             </div>
             <div style={{ background: C.s2, borderRadius: 8, padding: "13px 15px", border: `1px solid ${C.b2}` }}>
               <div style={S.lbl}>TOP PREMIUM EARNERS</div>
-              {[...inc.topEarners].sort((a, b) => b.net - a.net).map((e, i) => {
-                const mx = Math.max(...inc.topEarners.map((x) => Math.abs(x.net)));
+              {[...(Array.isArray(inc.topEarners) ? inc.topEarners : [])].sort((a, b) => b.net - a.net).map((e, i) => {
+                const mx = Math.max(...(Array.isArray(inc.topEarners) ? inc.topEarners : []).map((x) => Math.abs(x.net)));
                 const neg = e.net < 0;
                 const c = neg ? C.red : C.green;
                 return (
@@ -1617,53 +1657,15 @@ function GizmoCommandCentre() {
             </div>
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          {[
-            { title: "▤ CRYPTO FEAR & GREED", data: liveFearGreed || state.fearGreed.crypto, isLive: !!liveFearGreed, context: v => v <= 25 ? "Extreme Fear" : v <= 45 ? "Fear — accumulation zone" : v <= 55 ? "Neutral" : v <= 75 ? "Greed — caution" : "Extreme Greed" },
-            { title: "▲ VIX / MARKET SENTIMENT", data: state.fearGreed.vix, isVix: true, isLive: false, context: v => v > 30 ? "High Fear" : v > 20 ? "Elevated — cautious" : v > 15 ? "Normal" : "Complacency" },
-          ].map(({ title, data, isVix, isLive, context }, idx) => {
-            const val = data.value;
-            const maxVal = isVix ? 50 : 100;
-            const pct = Math.min(100, (val / maxVal) * 100);
-            const gaugeColor = isVix
-              ? (val > 30 ? C.red : val > 20 ? C.orange : val > 15 ? C.gold : C.green)
-              : (val <= 25 ? C.red : val <= 45 ? C.orange : val <= 55 ? C.gold : C.green);
-            const needleAngle = -90 + (pct / 100) * 180;
-            const rightLabel = isLive ? "LIVE" : `Updated ${data.updated}`;
-            return (
-              <Panel key={idx} title={title} right={<span style={isLive ? { color: C.green, textShadow: `0 0 6px ${C.green}` } : {}}>{rightLabel}</span>}>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "8px 0" }}>
-                  <svg width="180" height="100" viewBox="0 0 180 100">
-                    <defs>
-                      <linearGradient id={`fg${idx}`} x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" stopColor={C.red} />
-                        <stop offset="25%" stopColor={C.orange} />
-                        <stop offset="50%" stopColor={C.gold} />
-                        <stop offset="75%" stopColor={C.green} />
-                        <stop offset="100%" stopColor={C.cyan} />
-                      </linearGradient>
-                    </defs>
-                    <path d="M 15 90 A 75 75 0 0 1 165 90" fill="none" stroke="rgba(0,170,255,.1)" strokeWidth="10" strokeLinecap="round" />
-                    <path d="M 15 90 A 75 75 0 0 1 165 90" fill="none" stroke={`url(#fg${idx})`} strokeWidth="10" strokeLinecap="round" strokeDasharray={`${pct * 2.36} 236`} opacity="0.7" />
-                    <line x1="90" y1="90" x2={90 + 55 * Math.cos((needleAngle * Math.PI) / 180)} y2={90 + 55 * Math.sin((needleAngle * Math.PI) / 180)} stroke={gaugeColor} strokeWidth="2.5" strokeLinecap="round" style={{ filter: `drop-shadow(0 0 4px ${gaugeColor})` }} />
-                    <circle cx="90" cy="90" r="4" fill={gaugeColor} style={{ filter: `drop-shadow(0 0 6px ${gaugeColor})` }} />
-                  </svg>
-                  <div style={{ ...S.mono, fontSize: 28, fontWeight: 700, color: gaugeColor, marginTop: 4, textShadow: `0 0 12px ${gaugeColor}` }}>{val}</div>
-                  <div style={{ ...S.exo, fontSize: 11, fontWeight: 700, color: gaugeColor, letterSpacing: 2, textTransform: "uppercase", marginTop: 2 }}>{data.label}</div>
-                  <div style={{ fontSize: 11, color: C.t3, marginTop: 6, textAlign: "center", maxWidth: 220, lineHeight: 1.4 }}>{context(val)}</div>
-                </div>
-              </Panel>
-            );
-          })}
-        </div>
+        <FearGreedGaugeLive lm={liveMarket} />
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
-          <Panel title="☰ OPEN OPTIONS POSITIONS" right={`${inc.openPositions.length} active · ${fmtUSD(openTotal)} total`}>
+          <Panel title="☰ OPEN OPTIONS POSITIONS" right={`${(Array.isArray(inc.openPositions) ? inc.openPositions : []).length} active · ${fmtUSD(openTotal)} total`}>
             <div style={{ display: "grid", gridTemplateColumns: "58px 68px 50px 70px 46px 36px 70px", gap: 8, padding: "7px 0", borderBottom: `1px solid ${C.b}`, marginBottom: 4 }}>
               {["TICKER", "STRIKE", "TYPE", "EXPIRY", "DTE", "QTY", "PREMIUM"].map((h) => (
                 <span key={h} style={{ ...S.lbl, margin: 0, textAlign: h === "PREMIUM" ? "right" : "left" }}>{h}</span>
               ))}
             </div>
-            {[...inc.openPositions].sort((a, b) => a.dte - b.dte).map((p, i) => {
+            {[...(Array.isArray(inc.openPositions) ? inc.openPositions : [])].sort((a, b) => a.dte - b.dte).map((p, i) => {
               const dc = p.dte <= 7 ? C.red : p.dte <= 14 ? C.orange : C.t2;
               const tc = p.type === "PUT" ? C.cyan : C.purple;
               const tbg = p.type === "PUT" ? "rgba(0,229,255,.11)" : "rgba(224,64,251,.11)";
@@ -1723,8 +1725,8 @@ function GizmoCommandCentre() {
               ))}
             </div>
           </Panel>
-          <Panel title="⚠ ALERTS" right={`${state.alerts.length} active`}>
-            {state.alerts.map((a, i) => {
+          <Panel title="⚠ ALERTS" right={`${safeAlerts.length} active`}>
+            {safeAlerts.map((a, i) => {
               const ac = a.level === "red" ? C.red : C.orange;
               return (
                 <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "8px 0", borderBottom: `1px solid ${C.b}` }}>
@@ -1822,7 +1824,7 @@ function GizmoCommandCentre() {
       { label: "View rocks", action: () => { setTab("rocks"); setCmdOpen(false); } },
       { label: "Ask Gizmo", action: () => { setTab("gizmo"); setCmdOpen(false); } },
       { label: "Financial Freedom", action: () => { setTab("freedom"); setCmdOpen(false); } },
-      { label: "View inbox (" + state.inbox.length + ")", action: () => { setTab("gizmo"); setCmdOpen(false); } },
+      { label: "View inbox (" + safeInbox.length + ")", action: () => { setTab("gizmo"); setCmdOpen(false); } },
       { label: "Export state", action: () => { const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "state.json"; a.click(); setCmdOpen(false); } },
     ];
     const filtered = cmdQuery ? actions.filter((a) => a.label.toLowerCase().includes(cmdQuery.toLowerCase())) : actions;
@@ -1863,8 +1865,9 @@ function GizmoCommandCentre() {
         <Header />
         <NavBar />
         {renderView()}
+        <DataFreshnessBar dataAge={dataAge} syncStatus={syncStatus} lm={liveMarket} />
         <div style={{ textAlign: "center", padding: 10, borderTop: `1px solid ${C.b2}`, position: "relative", zIndex: 1 }}>
-          <span style={{ ...S.exo, fontSize: 9, color: C.t3, letterSpacing: 2 }}>GIZMO v4.0 ◆ COMMAND CENTRE ◆ LIVE</span>
+          <span style={{ ...S.exo, fontSize: 9, color: C.t3, letterSpacing: 2 }}>GIZMO v8.0 ◆ COMMAND CENTRE ◆ LIVE DATA</span>
         </div>
       </div>
       <CommandPalette />
@@ -1874,16 +1877,8 @@ function GizmoCommandCentre() {
 }
 
 
-// ── Mount ──
-const root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(<GizmoCommandCentre />);
-  </script>
-
-  <!-- Service Worker Registration -->
-  <script>
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("service-worker.js").catch(function(e) { console.log("SW reg failed:", e); });
-    }
-  </script>
+// ── MOUNT ─────────────────────────────────────────────────
+ReactDOM.createRoot(document.getElementById('root')).render(<GizmoCommandCentre />);
+</script>
 </body>
 </html>
