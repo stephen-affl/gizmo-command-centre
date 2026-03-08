@@ -113,37 +113,8 @@ const DEFAULT_STATE = {
     },
     nextReview: "2026-06-01", anchor: "Does this get me to $20K/mo faster?",
   },
-  tasks: [
-    // Inbox
-    { id: "i1", title: "CRM tool for Raisr", type: "inbox", status: "inbox", priority: "medium", energy: "medium", domain: "RAISR", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
-    { id: "i2", title: "Second brain — deeper build", type: "inbox", status: "inbox", priority: "medium", energy: "high", domain: "INFRA", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
-    { id: "i3", title: "AI agent financial system Q2 roadmap", type: "inbox", status: "inbox", priority: "medium", energy: "high", domain: "WEALTH", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
-    { id: "i4", title: "Podcast / content idea around AI + finance", type: "inbox", status: "inbox", priority: "medium", energy: "medium", domain: "RAISR", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
-    // Stephen's tasks
-    { id: "s1", title: "Amex auto-pay setup", type: "stephen", status: "todo", priority: "urgent", energy: "low", domain: "OPS", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
-    { id: "s2", title: "Taxes (Wealthsimple)", type: "stephen", status: "todo", priority: "high", energy: "medium", domain: "PERSONAL", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
-    { id: "s3", title: "AFFL board meeting notes", type: "stephen", status: "todo", priority: "high", energy: "medium", domain: "AFFL", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
-    { id: "s4", title: "Organize bags", type: "stephen", status: "todo", priority: "medium", energy: "low", domain: "HOME", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
-    { id: "s5", title: "Clean Luke's room", type: "stephen", status: "todo", priority: "medium", energy: "low", domain: "HOME", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
-    { id: "s6", title: "Organize living room + cardboard", type: "stephen", status: "todo", priority: "medium", energy: "low", domain: "HOME", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
-    { id: "s7", title: "Wealthsimple CSV export → Gizmo", type: "stephen", status: "todo", priority: "high", energy: "low", domain: "WEALTH", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
-    // Waiting
-    { id: "w1", title: "Ben birthday party planning", type: "stephen", status: "waiting", priority: "medium", energy: "low", domain: "PERSONAL", waitingOn: "Craig, Aaron", dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
-    // Gizmo's tasks
-    { id: "g1", title: "Whisper voice transcription setup", type: "gizmo", status: "in_progress", priority: "high", energy: null, domain: "INFRA", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
-    { id: "g2", title: "AI agent deeper build — Q2 roadmap", type: "gizmo", status: "todo", priority: "high", energy: null, domain: "WEALTH", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
-    { id: "g3", title: "EOD script debug", type: "gizmo", status: "todo", priority: "high", energy: null, domain: "WEALTH", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T12:00:00Z", completedAt: null },
-    // Done today
-    { id: "d1", title: "Cron delivery IDs fixed", type: "gizmo", status: "done", priority: "high", energy: null, domain: "INFRA", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T08:00:00Z", completedAt: "2026-03-07T12:00:00Z" },
-    { id: "d2", title: "Live market data updater deployed", type: "gizmo", status: "done", priority: "high", energy: null, domain: "INFRA", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T09:00:00Z", completedAt: "2026-03-07T12:00:00Z" },
-    { id: "d3", title: "Dashboard v8 live on GitHub Pages", type: "gizmo", status: "done", priority: "high", energy: null, domain: "INFRA", waitingOn: null, dueDate: null, notes: "", createdAt: "2026-03-07T10:00:00Z", completedAt: "2026-03-07T12:00:00Z" },
-  ],
-  alerts: [
-    { level: "yellow", text: "ONDS at 115/140 (watch at 135)", ts: "2026-03-05T21:00:00" },
-    { level: "yellow", text: "30-day income at 92% of $20K target", ts: "2026-03-05T21:00:00" },
-    { level: "red", text: "All 11 cron jobs failing — Anthropic credits depleted", ts: "2026-03-05T20:00:00" },
-    { level: "yellow", text: "Mar showing negative — rolls in progress", ts: "2026-03-05T21:30:00" },
-  ],
+  tasks: [], // Rule #5: populated from state.json, never seed here
+  alerts: [], // Rule #5: populated from state.json, never seed here
   cronHealth: {
     marketOpen: { status: "error", errors: 3, note: "Message delivery failed" },
     midday: { status: "error", errors: 4, note: "Message delivery failed" },
@@ -156,14 +127,7 @@ const DEFAULT_STATE = {
     { name: "Gizmo", status: "error", model: "claude-sonnet", trust: "L2", cron: "0 9,12,17 * * *", channel: "telegram" },
     { name: "Apex", status: "error", model: "claude-sonnet", trust: "L2", cron: "0 9,16 * * 1-5", channel: "telegram" },
   ],
-  activity: [
-    { ts: "2026-03-05T21:45:00", type: "task", text: "Wealthsimple CSV export → done" },
-    { ts: "2026-03-05T21:30:00", type: "alert", text: "Mar income negative — rolls in progress" },
-    { ts: "2026-03-05T20:00:00", type: "system", text: "All cron jobs failing — credits depleted" },
-    { ts: "2026-03-05T19:30:00", type: "task", text: "Command Centre finalize → in_progress" },
-    { ts: "2026-03-05T18:00:00", type: "system", text: "State export completed" },
-    { ts: "2026-03-05T17:00:00", type: "alert", text: "ONDS approaching watch level (115/140)" },
-  ],
+  activity: [], // Rule #5: populated from state.json
   rocks: [
     { id: 1, text: "Set up Amex auto-pay", domain: "finance", due: "2026-03-31", done: false },
     { id: 2, text: "Quit vaping completely", domain: "health", due: "2026-03-31", done: false },
@@ -209,12 +173,7 @@ const DEFAULT_STATE = {
       { id: 5, text: "Weekly: summarize flywheel growth vs projection", priority: "medium", active: true, domain: "wealth", created: "2026-03-01" },
       { id: 6, text: "Monitor BTC price — alert on >5% daily moves", priority: "low", active: false, domain: "wealth", created: "2026-02-25" },
     ],
-    handoffs: [
-      { id: 1, ts: "2026-03-05T09:15:00", text: "Close IBRX CC at $12.50 — hit 80% capture target", domain: "wealth", status: "accepted", urgency: "high" },
-      { id: 2, ts: "2026-03-05T09:15:00", text: "Set up Amex auto-pay today (3rd reminder)", domain: "operations", status: "pending", urgency: "urgent" },
-      { id: 3, ts: "2026-03-05T12:10:00", text: "Consider MSTZ quick flip — momentum building", domain: "wealth", status: "accepted", urgency: "medium" },
-      { id: 4, ts: "2026-03-04T17:05:00", text: "Review ASTS position — still -$2,358 net. Roll or cut?", domain: "wealth", status: "pending", urgency: "high" },
-    ],
+    handoffs: [], // Rule #5: populated from state.json
     scorecard: {
       weeklyRatings: [
         { week: "Feb 17", useful: 14, noise: 3, missed: 1, total: 18 },
