@@ -514,7 +514,6 @@ const FearGreedGaugeLive = ({ lm }) => {
 
 // ── v9: OPTIONS RECOMMENDATION SCANNER ───────────────────────
 const OptionsRecommendationScanner = ({ positions, lm, policy, finance, income }) => {
-  const signals = [];
   const pos = positions || [];
   const vixVal = lm?.vix?.value ?? 20;
   const fgVal = lm?.fearGreed?.value ?? 50;
@@ -522,139 +521,282 @@ const OptionsRecommendationScanner = ({ positions, lm, policy, finance, income }
   const marginUsed = Math.abs(finance?.margin || 0);
   const marginMax = Math.abs(finance?.marginMax || 40000);
   const marginPct = marginMax > 0 ? (marginUsed / marginMax) * 100 : 0;
+  const marginRoom = marginMax - marginUsed;
+  const fxRate = income?.fxRate || 1.40;
+  const targetCAD = income?.target || 20000;
+  const targetUSD = targetCAD / fxRate;
+  const topEarners = Array.isArray(income?.topEarners) ? income.topEarners : [];
 
   // Market regime
   const regime = vixVal > 30 ? "high_vol" : vixVal > 20 ? "elevated" : "normal";
   const sentiment = fgVal <= 25 ? "extreme_fear" : fgVal <= 40 ? "fear" : fgVal <= 60 ? "neutral" : "greed";
 
-  // Ticker concentration
-  const tickerCount = {};
-  pos.forEach(p => { tickerCount[p.ticker] = (tickerCount[p.ticker] || 0) + 1; });
+  // Income gap: how much more premium (USD) needed this month
+  const r30 = income?.rolling30d || {};
+  const currentMonthly = Array.isArray(income?.monthly) ? income.monthly : [];
+  const thisMonth = currentMonthly.find(m => m.partial) || currentMonthly[currentMonthly.length - 1] || {};
+  const earnedThisMonthUSD = thisMonth.totalUSD || 0;
+  const premiumGapUSD = Math.max(0, targetUSD - earnedThisMonthUSD);
+  const premiumGapCAD = premiumGapUSD * fxRate;
+  const daysLeftInMonth = Math.max(1, 30 - (thisMonth.days || 0));
+  const dailyTargetUSD = premiumGapUSD / daysLeftInMonth;
 
+  // Ticker concentration — count existing positions per ticker
+  const tickerCount = {};
+  const tickerPremium = {};
+  pos.forEach(p => {
+    tickerCount[p.ticker] = (tickerCount[p.ticker] || 0) + 1;
+    tickerPremium[p.ticker] = (tickerPremium[p.ticker] || 0) + p.premium;
+  });
+
+  // Build top earner lookup for historical performance scoring
+  const earnerMap = {};
+  topEarners.forEach(e => { earnerMap[e.ticker] = e.net; });
+  const maxEarnerNet = Math.max(1, ...topEarners.map(e => e.net));
+
+  // ── EXISTING POSITION ALERTS ──────────────────────────────
+  const alerts = [];
   pos.forEach(p => {
     const livePrice = stocks[p.ticker]?.price;
-    const priceChg = stocks[p.ticker]?.change || 0;
-
-    // 1. DTE-based signals
     if (p.dte <= 3) {
-      signals.push({ ticker: p.ticker, type: p.type, action: "CLOSE", urgency: "critical", reason: `${p.dte}d to expiry — close or roll immediately`, strike: p.strike, premium: p.premium });
+      alerts.push({ ticker: p.ticker, type: p.type, action: "CLOSE", urgency: "critical", reason: `${p.dte}d to expiry — close or roll now`, strike: p.strike, premium: p.premium });
     } else if (p.dte <= 7) {
-      signals.push({ ticker: p.ticker, type: p.type, action: "ROLL", urgency: "high", reason: `${p.dte}d DTE — evaluate roll for next expiry`, strike: p.strike, premium: p.premium });
+      alerts.push({ ticker: p.ticker, type: p.type, action: "ROLL", urgency: "high", reason: `${p.dte}d DTE — evaluate roll`, strike: p.strike, premium: p.premium });
     }
-
-    // 2. Price proximity to strike (needs live data)
     if (livePrice && p.type === "PUT") {
-      const distPct = ((livePrice - p.strike) / p.strike) * 100;
-      if (distPct < -5) {
-        signals.push({ ticker: p.ticker, type: p.type, action: "DEFEND", urgency: "critical", reason: `Price $${livePrice.toFixed(2)} is ${Math.abs(distPct).toFixed(1)}% below $${p.strike} strike — ITM risk`, strike: p.strike, premium: p.premium });
-      } else if (distPct < 2) {
-        signals.push({ ticker: p.ticker, type: p.type, action: "MONITOR", urgency: "high", reason: `Price $${livePrice.toFixed(2)} only ${distPct.toFixed(1)}% above $${p.strike} strike — assignment risk`, strike: p.strike, premium: p.premium });
-      }
+      const dist = ((livePrice - p.strike) / p.strike) * 100;
+      if (dist < -5) alerts.push({ ticker: p.ticker, type: p.type, action: "DEFEND", urgency: "critical", reason: `$${livePrice.toFixed(2)} is ${Math.abs(dist).toFixed(1)}% below $${p.strike} — ITM`, strike: p.strike, premium: p.premium });
+      else if (dist < 2) alerts.push({ ticker: p.ticker, type: p.type, action: "MONITOR", urgency: "high", reason: `$${livePrice.toFixed(2)} only ${dist.toFixed(1)}% above $${p.strike}`, strike: p.strike, premium: p.premium });
     }
     if (livePrice && p.type === "CALL") {
-      const distPct = ((p.strike - livePrice) / livePrice) * 100;
-      if (distPct < -5) {
-        signals.push({ ticker: p.ticker, type: p.type, action: "DEFEND", urgency: "critical", reason: `Price $${livePrice.toFixed(2)} is ${Math.abs(distPct).toFixed(1)}% above $${p.strike} strike — shares called away`, strike: p.strike, premium: p.premium });
-      } else if (distPct < 2) {
-        signals.push({ ticker: p.ticker, type: p.type, action: "MONITOR", urgency: "high", reason: `Price $${livePrice.toFixed(2)} within ${distPct.toFixed(1)}% of $${p.strike} strike`, strike: p.strike, premium: p.premium });
+      const dist = ((p.strike - livePrice) / livePrice) * 100;
+      if (dist < -5) alerts.push({ ticker: p.ticker, type: p.type, action: "DEFEND", urgency: "critical", reason: `$${livePrice.toFixed(2)} is ${Math.abs(dist).toFixed(1)}% above $${p.strike} — called away`, strike: p.strike, premium: p.premium });
+      else if (dist < 2) alerts.push({ ticker: p.ticker, type: p.type, action: "MONITOR", urgency: "high", reason: `$${livePrice.toFixed(2)} within ${dist.toFixed(1)}% of $${p.strike}`, strike: p.strike, premium: p.premium });
+    }
+    if (tickerCount[p.ticker] > 2) {
+      alerts.push({ ticker: p.ticker, type: p.type, action: "REDUCE", urgency: "medium", reason: `${tickerCount[p.ticker]} positions — concentration risk`, strike: p.strike, premium: p.premium });
+    }
+  });
+  if (marginPct > 85) alerts.push({ ticker: "MARGIN", type: "—", action: "REDUCE", urgency: "critical", reason: `${marginPct.toFixed(0)}% of limit — reduce exposure`, strike: null, premium: null });
+
+  // Dedup alerts
+  const urgencyOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+  alerts.sort((a, b) => (urgencyOrder[a.urgency] || 3) - (urgencyOrder[b.urgency] || 3));
+  const seenA = {};
+  const dedupAlerts = [];
+  alerts.forEach(s => {
+    const key = `${s.ticker}-${s.action}-${s.strike || ""}`;
+    if (!seenA[key]) { seenA[key] = true; dedupAlerts.push(s); }
+  });
+
+  // ── NEW POSITION RECOMMENDATIONS ─────────────────────────
+  // Score each held/watched ticker for CSP or CC opportunities
+  const allTickers = [...new Set([...HELD_TICKERS, ...WATCH_TICKERS])];
+  const recommendations = [];
+
+  allTickers.forEach(sym => {
+    const sd = stocks[sym];
+    if (!sd || !sd.price) return;
+    const price = sd.price;
+    const chg = sd.change || 0;
+    const existingCount = tickerCount[sym] || 0;
+    const earnerNet = earnerMap[sym] ?? 0;
+
+    // Skip if already at concentration limit (3+ positions)
+    if (existingCount >= 3) return;
+
+    // Determine if we have shares (existing CC) or can sell CSP
+    const hasCC = pos.some(p => p.ticker === sym && p.type === "CALL");
+    const hasCSP = pos.some(p => p.ticker === sym && p.type === "PUT");
+
+    // Estimate premium: ~1-3% of strike for 14-21 DTE puts, ~0.5-2% for calls
+    // Scale with VIX: higher VIX = juicier premiums
+    const vixMult = vixVal > 30 ? 1.6 : vixVal > 20 ? 1.2 : 1.0;
+
+    // CSP recommendation: strike ~5-10% OTM
+    if (!hasCSP || existingCount < 2) {
+      const cspStrike = Math.round(price * 0.92 * 2) / 2; // ~8% OTM, round to 0.50
+      const cspCollateral = cspStrike * 100;
+      const estPremBase = price > 200 ? 0.018 : price > 50 ? 0.022 : 0.028; // higher yield for cheaper stocks
+      const estPremium = Math.round(cspStrike * estPremBase * vixMult * 100);
+      const annReturn = cspCollateral > 0 ? (estPremium / cspCollateral) * (365 / 18) * 100 : 0;
+      const monthlyContrib = estPremium; // per contract
+
+      // Score: weighted combination
+      let score = 0;
+      score += Math.min(30, annReturn * 1.5); // Premium yield (max 30)
+      score += earnerNet > 0 ? Math.min(25, (earnerNet / maxEarnerNet) * 25) : -10; // Track record (max 25, penalty if loser)
+      score += existingCount === 0 ? 15 : existingCount === 1 ? 5 : 0; // Diversification bonus
+      score += sentiment === "extreme_fear" || sentiment === "fear" ? 10 : sentiment === "neutral" ? 5 : 0; // Fear = better entry
+      score += regime === "elevated" ? 5 : regime === "high_vol" ? -10 : 0; // VIX regime
+      score += chg < -3 ? 8 : chg < -1 ? 4 : chg > 3 ? -5 : 0; // Down day = better CSP entry
+
+      if (cspCollateral <= marginRoom && score > 10) {
+        recommendations.push({
+          ticker: sym, strategy: "CSP", strike: cspStrike, dte: 18,
+          estPremium, annReturn, score, monthlyContrib, collateral: cspCollateral,
+          reason: earnerNet > 0
+            ? `Top earner ($${earnerNet.toLocaleString()} net), ~${annReturn.toFixed(0)}% ann. yield`
+            : `~${annReturn.toFixed(0)}% annualized yield, ${existingCount === 0 ? "diversifies" : "adds to"} portfolio`,
+        });
       }
     }
 
-    // 3. Concentration risk
-    if (tickerCount[p.ticker] > 2) {
-      signals.push({ ticker: p.ticker, type: p.type, action: "REDUCE", urgency: "medium", reason: `${tickerCount[p.ticker]} positions on ${p.ticker} — concentration risk`, strike: p.strike, premium: p.premium });
+    // CC recommendation: strike ~5-8% OTM
+    if (!hasCC || existingCount < 2) {
+      const ccStrike = Math.round(price * 1.07 * 2) / 2; // ~7% OTM
+      const estPremBase = price > 200 ? 0.012 : price > 50 ? 0.016 : 0.022;
+      const estPremium = Math.round(ccStrike * estPremBase * vixMult * 100);
+      const annReturn = price > 0 ? (estPremium / (price * 100)) * (365 / 18) * 100 : 0;
+
+      let score = 0;
+      score += Math.min(25, annReturn * 1.2);
+      score += earnerNet > 0 ? Math.min(20, (earnerNet / maxEarnerNet) * 20) : -5;
+      score += existingCount === 0 ? 10 : 0;
+      score += chg > 2 ? 6 : chg > 0 ? 3 : -2; // Up day = better CC entry
+      score += regime === "elevated" ? 5 : regime === "high_vol" ? 8 : 0; // High vol = fat CC premiums
+
+      if (score > 10) {
+        recommendations.push({
+          ticker: sym, strategy: "CC", strike: ccStrike, dte: 18,
+          estPremium, annReturn, score, monthlyContrib: estPremium, collateral: 0,
+          reason: `~${annReturn.toFixed(0)}% ann. yield on shares${chg > 2 ? ", up day entry" : ""}`,
+        });
+      }
     }
   });
 
-  // 4. VIX regime signals
-  if (regime === "high_vol") {
-    signals.push({ ticker: "MARKET", type: "—", action: "PAUSE", urgency: "high", reason: `VIX at ${vixVal.toFixed(1)} — high volatility, pause new CSP sells`, strike: null, premium: null });
-  } else if (regime === "normal" && sentiment === "greed") {
-    signals.push({ ticker: "MARKET", type: "—", action: "SELL", urgency: "low", reason: `VIX ${vixVal.toFixed(1)} + greed — good conditions for premium selling`, strike: null, premium: null });
-  }
+  // Sort by score descending, take top 8
+  recommendations.sort((a, b) => b.score - a.score);
+  const topRecs = recommendations.slice(0, 8);
 
-  // 5. Margin utilization
-  if (marginPct > 85) {
-    signals.push({ ticker: "MARGIN", type: "—", action: "REDUCE", urgency: "critical", reason: `Margin at ${marginPct.toFixed(0)}% of limit — reduce exposure`, strike: null, premium: null });
-  } else if (marginPct > 60) {
-    signals.push({ ticker: "MARGIN", type: "—", action: "MONITOR", urgency: "medium", reason: `Margin at ${marginPct.toFixed(0)}% — approaching caution zone`, strike: null, premium: null });
-  }
-
-  // 6. Fear = opportunity for CSPs
-  if (sentiment === "extreme_fear" && regime !== "high_vol" && marginPct < 60) {
-    signals.push({ ticker: "MARKET", type: "—", action: "OPPORTUNITY", urgency: "medium", reason: "Extreme fear + manageable VIX — elevated premiums available for CSPs", strike: null, premium: null });
-  }
-
-  // Deduplicate by ticker+action (keep highest urgency)
-  const urgencyOrder = { critical: 0, high: 1, medium: 2, low: 3 };
-  const seen = {};
-  const deduped = [];
-  signals.sort((a, b) => (urgencyOrder[a.urgency] || 3) - (urgencyOrder[b.urgency] || 3));
-  signals.forEach(s => {
-    const key = `${s.ticker}-${s.action}-${s.strike || ""}`;
-    if (!seen[key]) { seen[key] = true; deduped.push(s); }
+  // How many of the top recs would close the premium gap
+  let cumPremium = 0;
+  const recsToTarget = [];
+  topRecs.forEach(r => {
+    cumPremium += r.monthlyContrib;
+    recsToTarget.push({ ...r, cumPremium, closesGap: cumPremium >= premiumGapUSD });
   });
 
-  const actionColors = { CLOSE: C.red, DEFEND: C.red, ROLL: C.orange, REDUCE: C.orange, MONITOR: C.gold, PAUSE: C.orange, SELL: C.green, OPPORTUNITY: C.cyan, HOLD: C.green };
+  // ── RENDER ────────────────────────────────────────────────
+  const actionColors = { CLOSE: C.red, DEFEND: C.red, ROLL: C.orange, REDUCE: C.orange, MONITOR: C.gold, PAUSE: C.orange, SELL: C.green, OPPORTUNITY: C.cyan };
   const urgencyColors = { critical: C.red, high: C.orange, medium: C.gold, low: C.green };
-  const critCount = deduped.filter(s => s.urgency === "critical").length;
-  const highCount = deduped.filter(s => s.urgency === "high").length;
-
+  const critCount = dedupAlerts.filter(s => s.urgency === "critical").length;
   const regimeLabel = regime === "high_vol" ? "HIGH VOL" : regime === "elevated" ? "ELEVATED" : "NORMAL";
   const regimeColor = regime === "high_vol" ? C.red : regime === "elevated" ? C.orange : C.green;
-  const sentimentLabel = sentiment === "extreme_fear" ? "EXTREME FEAR" : sentiment === "fear" ? "FEAR" : sentiment === "neutral" ? "NEUTRAL" : "GREED";
+  const sentimentLabel = sentiment.replace("_", " ").toUpperCase();
   const sentimentColor = sentiment === "extreme_fear" ? C.red : sentiment === "fear" ? C.orange : sentiment === "neutral" ? C.gold : C.green;
+  const gapColor = premiumGapUSD <= 0 ? C.green : premiumGapUSD < targetUSD * 0.5 ? C.gold : C.orange;
+  const noLiveData = !lm?.stocks || Object.keys(stocks).length === 0;
 
   return (
     <Panel title="⚡ OPTIONS RECOMMENDATION SCANNER" titleColor={C.cyan} right={
-      <span style={{ ...S.mono, fontSize: 10, color: critCount > 0 ? C.red : highCount > 0 ? C.orange : C.green }}>
-        {deduped.length} signals{critCount > 0 ? ` · ${critCount} CRITICAL` : ""}
+      <span style={{ ...S.mono, fontSize: 10, color: critCount > 0 ? C.red : C.cyan }}>
+        {topRecs.length} recommendations{critCount > 0 ? ` · ${critCount} alerts` : ""}
       </span>
     }>
-      {/* Regime bar */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", background: `${regimeColor}15`, border: `1px solid ${regimeColor}33`, borderRadius: 4 }}>
-          <span style={{ ...S.exo, fontSize: 8, color: C.t3, letterSpacing: 1.5 }}>REGIME</span>
-          <span style={{ ...S.mono, fontSize: 11, fontWeight: 700, color: regimeColor }}>{regimeLabel}</span>
+      {/* Status bar */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        {[
+          ["REGIME", regimeLabel, regimeColor],
+          ["SENTIMENT", sentimentLabel, sentimentColor],
+          ["MARGIN ROOM", "$" + fmtK(marginRoom), marginPct > 85 ? C.red : marginPct > 60 ? C.orange : C.green],
+          ["MONTHLY GAP", premiumGapUSD <= 0 ? "ON TARGET" : "$" + fmtK(premiumGapCAD) + " CAD", gapColor],
+          ["DAILY NEED", premiumGapUSD <= 0 ? "$0" : "$" + Math.round(dailyTargetUSD).toLocaleString() + " USD", gapColor],
+        ].map(([label, value, color], i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", background: `${color}15`, border: `1px solid ${color}33`, borderRadius: 4 }}>
+            <span style={{ ...S.exo, fontSize: 8, color: C.t3, letterSpacing: 1.5 }}>{label}</span>
+            <span style={{ ...S.mono, fontSize: 11, fontWeight: 700, color }}>{value}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Premium gap progress bar */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+          <span style={{ ...S.lbl, margin: 0 }}>MONTHLY TARGET PROGRESS</span>
+          <span style={{ ...S.mono, fontSize: 11, color: gapColor }}>
+            {earnedThisMonthUSD >= 0 ? "+" : ""}{fmtUSD(earnedThisMonthUSD)} / {fmtUSD(targetUSD)} USD
+            {thisMonth.partial ? ` (${thisMonth.days}d)` : ""}
+          </span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", background: `${sentimentColor}15`, border: `1px solid ${sentimentColor}33`, borderRadius: 4 }}>
-          <span style={{ ...S.exo, fontSize: 8, color: C.t3, letterSpacing: 1.5 }}>SENTIMENT</span>
-          <span style={{ ...S.mono, fontSize: 11, fontWeight: 700, color: sentimentColor }}>{sentimentLabel}</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", background: `${marginPct > 85 ? C.red : marginPct > 60 ? C.orange : C.green}15`, border: `1px solid ${marginPct > 85 ? C.red : marginPct > 60 ? C.orange : C.green}33`, borderRadius: 4 }}>
-          <span style={{ ...S.exo, fontSize: 8, color: C.t3, letterSpacing: 1.5 }}>MARGIN</span>
-          <span style={{ ...S.mono, fontSize: 11, fontWeight: 700, color: marginPct > 85 ? C.red : marginPct > 60 ? C.orange : C.green }}>{marginPct.toFixed(0)}%</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", background: `${C.blue}15`, border: `1px solid ${C.blue}33`, borderRadius: 4 }}>
-          <span style={{ ...S.exo, fontSize: 8, color: C.t3, letterSpacing: 1.5 }}>POSITIONS</span>
-          <span style={{ ...S.mono, fontSize: 11, fontWeight: 700, color: C.blue }}>{pos.length}</span>
+        <div style={{ height: 6, background: "rgba(0,170,255,.08)", borderRadius: 3, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${Math.min(100, Math.max(0, ((earnedThisMonthUSD > 0 ? earnedThisMonthUSD : 0) / targetUSD) * 100))}%`, background: gapColor, borderRadius: 3, transition: "width .6s" }} />
         </div>
       </div>
-      {/* Signal list */}
-      {deduped.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "18px 0", color: C.green }}>
-          <span style={{ ...S.mono, fontSize: 13 }}>ALL CLEAR — no actionable signals</span>
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {deduped.map((s, i) => {
+
+      {/* Alerts section */}
+      {dedupAlerts.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ ...S.lbl, marginBottom: 6, color: C.red }}>⚠ POSITION ALERTS</div>
+          {dedupAlerts.map((s, i) => {
             const ac = actionColors[s.action] || C.t2;
             const uc = urgencyColors[s.urgency] || C.t3;
             return (
-              <div key={i} style={{ display: "grid", gridTemplateColumns: "8px 52px 50px 60px 1fr", gap: 8, padding: "7px 4px", borderBottom: `1px solid ${C.b}`, alignItems: "center" }}>
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "8px 50px 48px 60px 1fr", gap: 8, padding: "6px 4px", borderBottom: `1px solid ${C.b}`, alignItems: "center" }}>
                 <div style={{ width: 8, height: 8, borderRadius: "50%", background: uc, boxShadow: `0 0 6px ${uc}`, animation: s.urgency === "critical" ? "pulse 1s infinite" : "none" }} />
                 <span style={{ ...S.mono, fontSize: 12, fontWeight: 700, color: C.t }}>{s.ticker}</span>
-                <span style={{ ...S.badge, background: `${ac}18`, color: ac, fontSize: 8, letterSpacing: 1, textAlign: "center" }}>{s.action}</span>
+                <span style={{ ...S.badge, background: `${ac}18`, color: ac, fontSize: 8, letterSpacing: 1 }}>{s.action}</span>
                 {s.type !== "—" ? (
                   <span style={{ ...S.badge, background: s.type === "PUT" ? "rgba(0,229,255,.11)" : "rgba(224,64,251,.11)", color: s.type === "PUT" ? C.cyan : C.purple, fontSize: 8 }}>{s.type} ${s.strike}</span>
                 ) : (
                   <span style={{ fontSize: 9, color: C.t3 }}>—</span>
                 )}
-                <span style={{ fontSize: 11, color: C.t2, lineHeight: 1.4 }}>{s.reason}</span>
+                <span style={{ fontSize: 11, color: C.t2 }}>{s.reason}</span>
               </div>
             );
           })}
         </div>
+      )}
+
+      {/* Recommended new positions */}
+      <div style={{ ...S.lbl, marginBottom: 6, color: C.cyan }}>◈ RECOMMENDED NEW POSITIONS</div>
+      {noLiveData ? (
+        <div style={{ textAlign: "center", padding: "18px 0", color: C.t3 }}>
+          <span style={{ ...S.mono, fontSize: 12, animation: "pulse 1.5s infinite" }}>Waiting for live market data to generate recommendations...</span>
+        </div>
+      ) : topRecs.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "18px 0", color: C.gold }}>
+          <span style={{ ...S.mono, fontSize: 12 }}>No opportunities meet scoring threshold — market conditions may be unfavorable</span>
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "52px 40px 60px 70px 55px 60px 1fr", gap: 8, padding: "6px 0", borderBottom: `1px solid ${C.b2}`, marginBottom: 4 }}>
+            {["TICKER", "TYPE", "STRIKE", "EST PREM", "ANN %", "SCORE", "RATIONALE"].map(h => (
+              <span key={h} style={{ ...S.lbl, margin: 0, fontSize: 8 }}>{h}</span>
+            ))}
+          </div>
+          {recsToTarget.map((r, i) => {
+            const stratColor = r.strategy === "CSP" ? C.cyan : C.purple;
+            const stratBg = r.strategy === "CSP" ? "rgba(0,229,255,.11)" : "rgba(224,64,251,.11)";
+            const scoreColor = r.score >= 40 ? C.green : r.score >= 25 ? C.gold : C.t2;
+            const scoreBars = Math.min(5, Math.round(r.score / 10));
+            return (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "52px 40px 60px 70px 55px 60px 1fr", gap: 8, padding: "7px 0", borderBottom: `1px solid ${C.b}`, alignItems: "center",
+                background: r.closesGap && !recsToTarget[i - 1]?.closesGap ? "rgba(0,230,118,.04)" : "transparent" }}>
+                <span style={{ ...S.mono, fontSize: 12, fontWeight: 700, color: C.t }}>{r.ticker}</span>
+                <span style={{ ...S.badge, background: stratBg, color: stratColor, fontSize: 8 }}>{r.strategy}</span>
+                <span style={{ ...S.mono, fontSize: 12, color: C.t2 }}>${r.strike}</span>
+                <span style={{ ...S.mono, fontSize: 12, fontWeight: 700, color: C.green }}>${r.estPremium.toLocaleString()}</span>
+                <span style={{ ...S.mono, fontSize: 11, color: r.annReturn >= 30 ? C.green : r.annReturn >= 15 ? C.gold : C.t2 }}>{r.annReturn.toFixed(0)}%</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                  <span style={{ ...S.mono, fontSize: 10, color: scoreColor, fontWeight: 700 }}>{r.score.toFixed(0)}</span>
+                  <span style={{ fontSize: 9, color: scoreColor, letterSpacing: -1 }}>{"█".repeat(scoreBars)}{"░".repeat(5 - scoreBars)}</span>
+                </div>
+                <span style={{ fontSize: 10, color: C.t3, lineHeight: 1.3 }}>{r.reason}</span>
+              </div>
+            );
+          })}
+          {/* Gap-to-target summary */}
+          {premiumGapUSD > 0 && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 4px", marginTop: 4, borderTop: `1px solid ${C.b2}` }}>
+              <span style={{ ...S.exo, fontSize: 10, color: C.t3, letterSpacing: 1 }}>IF ALL EXECUTED</span>
+              <span style={{ ...S.mono, fontSize: 12, fontWeight: 700, color: cumPremium >= premiumGapUSD ? C.green : C.orange }}>
+                +${cumPremium.toLocaleString()} USD est. · {cumPremium >= premiumGapUSD ? "CLOSES GAP ✓" : `${Math.round((cumPremium / premiumGapUSD) * 100)}% of gap`}
+              </span>
+            </div>
+          )}
+        </>
       )}
     </Panel>
   );
