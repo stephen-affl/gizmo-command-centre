@@ -512,6 +512,154 @@ const FearGreedGaugeLive = ({ lm }) => {
   );
 };
 
+// ── v9: OPTIONS RECOMMENDATION SCANNER ───────────────────────
+const OptionsRecommendationScanner = ({ positions, lm, policy, finance, income }) => {
+  const signals = [];
+  const pos = positions || [];
+  const vixVal = lm?.vix?.value ?? 20;
+  const fgVal = lm?.fearGreed?.value ?? 50;
+  const stocks = lm?.stocks || {};
+  const marginUsed = Math.abs(finance?.margin || 0);
+  const marginMax = Math.abs(finance?.marginMax || 40000);
+  const marginPct = marginMax > 0 ? (marginUsed / marginMax) * 100 : 0;
+
+  // Market regime
+  const regime = vixVal > 30 ? "high_vol" : vixVal > 20 ? "elevated" : "normal";
+  const sentiment = fgVal <= 25 ? "extreme_fear" : fgVal <= 40 ? "fear" : fgVal <= 60 ? "neutral" : "greed";
+
+  // Ticker concentration
+  const tickerCount = {};
+  pos.forEach(p => { tickerCount[p.ticker] = (tickerCount[p.ticker] || 0) + 1; });
+
+  pos.forEach(p => {
+    const livePrice = stocks[p.ticker]?.price;
+    const priceChg = stocks[p.ticker]?.change || 0;
+
+    // 1. DTE-based signals
+    if (p.dte <= 3) {
+      signals.push({ ticker: p.ticker, type: p.type, action: "CLOSE", urgency: "critical", reason: `${p.dte}d to expiry — close or roll immediately`, strike: p.strike, premium: p.premium });
+    } else if (p.dte <= 7) {
+      signals.push({ ticker: p.ticker, type: p.type, action: "ROLL", urgency: "high", reason: `${p.dte}d DTE — evaluate roll for next expiry`, strike: p.strike, premium: p.premium });
+    }
+
+    // 2. Price proximity to strike (needs live data)
+    if (livePrice && p.type === "PUT") {
+      const distPct = ((livePrice - p.strike) / p.strike) * 100;
+      if (distPct < -5) {
+        signals.push({ ticker: p.ticker, type: p.type, action: "DEFEND", urgency: "critical", reason: `Price $${livePrice.toFixed(2)} is ${Math.abs(distPct).toFixed(1)}% below $${p.strike} strike — ITM risk`, strike: p.strike, premium: p.premium });
+      } else if (distPct < 2) {
+        signals.push({ ticker: p.ticker, type: p.type, action: "MONITOR", urgency: "high", reason: `Price $${livePrice.toFixed(2)} only ${distPct.toFixed(1)}% above $${p.strike} strike — assignment risk`, strike: p.strike, premium: p.premium });
+      }
+    }
+    if (livePrice && p.type === "CALL") {
+      const distPct = ((p.strike - livePrice) / livePrice) * 100;
+      if (distPct < -5) {
+        signals.push({ ticker: p.ticker, type: p.type, action: "DEFEND", urgency: "critical", reason: `Price $${livePrice.toFixed(2)} is ${Math.abs(distPct).toFixed(1)}% above $${p.strike} strike — shares called away`, strike: p.strike, premium: p.premium });
+      } else if (distPct < 2) {
+        signals.push({ ticker: p.ticker, type: p.type, action: "MONITOR", urgency: "high", reason: `Price $${livePrice.toFixed(2)} within ${distPct.toFixed(1)}% of $${p.strike} strike`, strike: p.strike, premium: p.premium });
+      }
+    }
+
+    // 3. Concentration risk
+    if (tickerCount[p.ticker] > 2) {
+      signals.push({ ticker: p.ticker, type: p.type, action: "REDUCE", urgency: "medium", reason: `${tickerCount[p.ticker]} positions on ${p.ticker} — concentration risk`, strike: p.strike, premium: p.premium });
+    }
+  });
+
+  // 4. VIX regime signals
+  if (regime === "high_vol") {
+    signals.push({ ticker: "MARKET", type: "—", action: "PAUSE", urgency: "high", reason: `VIX at ${vixVal.toFixed(1)} — high volatility, pause new CSP sells`, strike: null, premium: null });
+  } else if (regime === "normal" && sentiment === "greed") {
+    signals.push({ ticker: "MARKET", type: "—", action: "SELL", urgency: "low", reason: `VIX ${vixVal.toFixed(1)} + greed — good conditions for premium selling`, strike: null, premium: null });
+  }
+
+  // 5. Margin utilization
+  if (marginPct > 85) {
+    signals.push({ ticker: "MARGIN", type: "—", action: "REDUCE", urgency: "critical", reason: `Margin at ${marginPct.toFixed(0)}% of limit — reduce exposure`, strike: null, premium: null });
+  } else if (marginPct > 60) {
+    signals.push({ ticker: "MARGIN", type: "—", action: "MONITOR", urgency: "medium", reason: `Margin at ${marginPct.toFixed(0)}% — approaching caution zone`, strike: null, premium: null });
+  }
+
+  // 6. Fear = opportunity for CSPs
+  if (sentiment === "extreme_fear" && regime !== "high_vol" && marginPct < 60) {
+    signals.push({ ticker: "MARKET", type: "—", action: "OPPORTUNITY", urgency: "medium", reason: "Extreme fear + manageable VIX — elevated premiums available for CSPs", strike: null, premium: null });
+  }
+
+  // Deduplicate by ticker+action (keep highest urgency)
+  const urgencyOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+  const seen = {};
+  const deduped = [];
+  signals.sort((a, b) => (urgencyOrder[a.urgency] || 3) - (urgencyOrder[b.urgency] || 3));
+  signals.forEach(s => {
+    const key = `${s.ticker}-${s.action}-${s.strike || ""}`;
+    if (!seen[key]) { seen[key] = true; deduped.push(s); }
+  });
+
+  const actionColors = { CLOSE: C.red, DEFEND: C.red, ROLL: C.orange, REDUCE: C.orange, MONITOR: C.gold, PAUSE: C.orange, SELL: C.green, OPPORTUNITY: C.cyan, HOLD: C.green };
+  const urgencyColors = { critical: C.red, high: C.orange, medium: C.gold, low: C.green };
+  const critCount = deduped.filter(s => s.urgency === "critical").length;
+  const highCount = deduped.filter(s => s.urgency === "high").length;
+
+  const regimeLabel = regime === "high_vol" ? "HIGH VOL" : regime === "elevated" ? "ELEVATED" : "NORMAL";
+  const regimeColor = regime === "high_vol" ? C.red : regime === "elevated" ? C.orange : C.green;
+  const sentimentLabel = sentiment === "extreme_fear" ? "EXTREME FEAR" : sentiment === "fear" ? "FEAR" : sentiment === "neutral" ? "NEUTRAL" : "GREED";
+  const sentimentColor = sentiment === "extreme_fear" ? C.red : sentiment === "fear" ? C.orange : sentiment === "neutral" ? C.gold : C.green;
+
+  return (
+    <Panel title="⚡ OPTIONS RECOMMENDATION SCANNER" titleColor={C.cyan} right={
+      <span style={{ ...S.mono, fontSize: 10, color: critCount > 0 ? C.red : highCount > 0 ? C.orange : C.green }}>
+        {deduped.length} signals{critCount > 0 ? ` · ${critCount} CRITICAL` : ""}
+      </span>
+    }>
+      {/* Regime bar */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", background: `${regimeColor}15`, border: `1px solid ${regimeColor}33`, borderRadius: 4 }}>
+          <span style={{ ...S.exo, fontSize: 8, color: C.t3, letterSpacing: 1.5 }}>REGIME</span>
+          <span style={{ ...S.mono, fontSize: 11, fontWeight: 700, color: regimeColor }}>{regimeLabel}</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", background: `${sentimentColor}15`, border: `1px solid ${sentimentColor}33`, borderRadius: 4 }}>
+          <span style={{ ...S.exo, fontSize: 8, color: C.t3, letterSpacing: 1.5 }}>SENTIMENT</span>
+          <span style={{ ...S.mono, fontSize: 11, fontWeight: 700, color: sentimentColor }}>{sentimentLabel}</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", background: `${marginPct > 85 ? C.red : marginPct > 60 ? C.orange : C.green}15`, border: `1px solid ${marginPct > 85 ? C.red : marginPct > 60 ? C.orange : C.green}33`, borderRadius: 4 }}>
+          <span style={{ ...S.exo, fontSize: 8, color: C.t3, letterSpacing: 1.5 }}>MARGIN</span>
+          <span style={{ ...S.mono, fontSize: 11, fontWeight: 700, color: marginPct > 85 ? C.red : marginPct > 60 ? C.orange : C.green }}>{marginPct.toFixed(0)}%</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", background: `${C.blue}15`, border: `1px solid ${C.blue}33`, borderRadius: 4 }}>
+          <span style={{ ...S.exo, fontSize: 8, color: C.t3, letterSpacing: 1.5 }}>POSITIONS</span>
+          <span style={{ ...S.mono, fontSize: 11, fontWeight: 700, color: C.blue }}>{pos.length}</span>
+        </div>
+      </div>
+      {/* Signal list */}
+      {deduped.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "18px 0", color: C.green }}>
+          <span style={{ ...S.mono, fontSize: 13 }}>ALL CLEAR — no actionable signals</span>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {deduped.map((s, i) => {
+            const ac = actionColors[s.action] || C.t2;
+            const uc = urgencyColors[s.urgency] || C.t3;
+            return (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "8px 52px 50px 60px 1fr", gap: 8, padding: "7px 4px", borderBottom: `1px solid ${C.b}`, alignItems: "center" }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: uc, boxShadow: `0 0 6px ${uc}`, animation: s.urgency === "critical" ? "pulse 1s infinite" : "none" }} />
+                <span style={{ ...S.mono, fontSize: 12, fontWeight: 700, color: C.t }}>{s.ticker}</span>
+                <span style={{ ...S.badge, background: `${ac}18`, color: ac, fontSize: 8, letterSpacing: 1, textAlign: "center" }}>{s.action}</span>
+                {s.type !== "—" ? (
+                  <span style={{ ...S.badge, background: s.type === "PUT" ? "rgba(0,229,255,.11)" : "rgba(224,64,251,.11)", color: s.type === "PUT" ? C.cyan : C.purple, fontSize: 8 }}>{s.type} ${s.strike}</span>
+                ) : (
+                  <span style={{ fontSize: 9, color: C.t3 }}>—</span>
+                )}
+                <span style={{ fontSize: 11, color: C.t2, lineHeight: 1.4 }}>{s.reason}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Panel>
+  );
+};
+
 // ── v8: DATA FRESHNESS BAR ────────────────────────────────────
 // FIX 12: Data Freshness — wired to state.gizmo_agent.dataFreshness + liveMarket
 const DataFreshnessBar = ({ dataAge, syncStatus, lm, gizmoAgent }) => {
@@ -2072,6 +2220,7 @@ function GizmoCommandCentre() {
           </div>
         </div>
         <FearGreedGaugeLive lm={liveMarket} />
+        <OptionsRecommendationScanner positions={safeOpenPos} lm={liveMarket} policy={state.policy} finance={fin} income={inc} />
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
           <Panel title="☰ OPEN OPTIONS POSITIONS" right={`${(Array.isArray(inc.openPositions) ? inc.openPositions : []).length} active · ${fmtUSD(openTotal)} total`}>
             <div style={{ display: "grid", gridTemplateColumns: "58px 68px 50px 70px 46px 36px 70px", gap: 8, padding: "7px 0", borderBottom: `1px solid ${C.b}`, marginBottom: 4 }}>
